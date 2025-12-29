@@ -803,7 +803,7 @@ class Rax_LMS_Database {
         
         // Get follow-up activities (activities with "follow-up" or "scheduled" in content)
         $activities = $wpdb->get_results($wpdb->prepare("
-            SELECT a.*, l.name as lead_name, l.email as lead_email, l.id as lead_id
+            SELECT a.*, l.name as lead_name, l.email as lead_email, l.id as lead_id, l.assigned_user, l.metadata
             FROM $activities_table a
             JOIN $leads_table l ON a.lead_id = l.id
             WHERE a.content LIKE %s
@@ -816,6 +816,7 @@ class Rax_LMS_Database {
         foreach ($activities as $activity) {
             // Try to extract date from content
             if (preg_match('/(\d{4}-\d{2}-\d{2})/', $activity['content'], $matches)) {
+                $metadata = !empty($activity['metadata']) ? json_decode($activity['metadata'], true) : array();
                 $events[] = array(
                     'id' => $activity['id'],
                     'lead_id' => $activity['lead_id'],
@@ -823,7 +824,9 @@ class Rax_LMS_Database {
                     'lead_email' => $activity['lead_email'],
                     'date' => $matches[1],
                     'content' => $activity['content'],
-                    'type' => 'followup'
+                    'type' => 'followup',
+                    'assigned_user' => $activity['assigned_user'],
+                    'company' => isset($metadata['company']) ? $metadata['company'] : ''
                 );
             }
         }
@@ -1300,6 +1303,153 @@ class Rax_LMS_Database {
         }
         
         return $data;
+    }
+    
+    /**
+     * Generate fake content data for testing/demo purposes
+     */
+    public static function generate_fake_data($count = 50) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'rax_lms_leads';
+        $activities_table = $wpdb->prefix . 'rax_lms_activities';
+        
+        $first_names = array('John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Jessica', 'William', 'Ashley', 'James', 'Amanda', 'Christopher', 'Melissa', 'Daniel', 'Michelle', 'Matthew', 'Stephanie', 'Anthony', 'Nicole', 'Mark', 'Elizabeth', 'Donald', 'Helen', 'Steven', 'Sandra', 'Paul', 'Donna', 'Andrew', 'Carol');
+        $last_names = array('Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson', 'Walker', 'Young');
+        
+        $sources = array('website', 'referral', 'social_media', 'email_campaign', 'phone', 'trade_show', 'partner', 'advertising', 'other', 'fluent_forms');
+        $statuses = array('new', 'contacted', 'qualified', 'converted', 'lost');
+        $priorities = array('low', 'medium', 'high');
+        $tags_pool = array('enterprise', 'small-business', 'startup', 'non-profit', 'government', 'healthcare', 'education', 'retail', 'technology', 'finance');
+        
+        $users = get_users(array('fields' => array('ID')));
+        $user_ids = array_map(function($user) { return $user->ID; }, $users);
+        
+        $created = 0;
+        $errors = array();
+        
+        for ($i = 0; $i < $count; $i++) {
+            $first_name = $first_names[array_rand($first_names)];
+            $last_name = $last_names[array_rand($last_names)];
+            $name = $first_name . ' ' . $last_name;
+            $email = strtolower($first_name . '.' . $last_name . '@' . array('example.com', 'test.com', 'demo.com', 'sample.org')[array_rand(array('example.com', 'test.com', 'demo.com', 'sample.org'))]);
+            
+            // Add random number to email to avoid duplicates
+            $email = str_replace('@', rand(100, 999) . '@', $email);
+            
+            $phone = '+1' . rand(200, 999) . rand(200, 999) . rand(1000, 9999);
+            $source = $sources[array_rand($sources)];
+            $status = $statuses[array_rand($statuses)];
+            $priority = $priorities[array_rand($priorities)];
+            $assigned_user = !empty($user_ids) && rand(0, 100) > 30 ? $user_ids[array_rand($user_ids)] : null;
+            
+            // Random tags (0-3 tags per lead)
+            $num_tags = rand(0, 3);
+            $tags = array();
+            if ($num_tags > 0) {
+                $selected_tags = array_rand($tags_pool, min($num_tags, count($tags_pool)));
+                if (!is_array($selected_tags)) {
+                    $selected_tags = array($selected_tags);
+                }
+                foreach ($selected_tags as $tag_index) {
+                    $tags[] = $tags_pool[$tag_index];
+                }
+            }
+            
+            // Random metadata
+            $metadata = array(
+                'company' => array('Acme Corp', 'Tech Solutions', 'Global Industries', 'Digital Services', 'Innovation Labs', 'Future Systems', 'Smart Business', 'NextGen Inc')[array_rand(array('Acme Corp', 'Tech Solutions', 'Global Industries', 'Digital Services', 'Innovation Labs', 'Future Systems', 'Smart Business', 'NextGen Inc'))],
+                'estimated_value' => rand(500, 50000),
+                'notes' => 'Generated fake data for testing purposes'
+            );
+            
+            // Random created date (within last 90 days)
+            $days_ago = rand(0, 90);
+            $created_at = date('Y-m-d H:i:s', strtotime("-{$days_ago} days"));
+            
+            $lead_data = array(
+                'name' => $name,
+                'email' => $email,
+                'phone' => $phone,
+                'source' => $source,
+                'status' => $status,
+                'priority' => $priority,
+                'assigned_user' => $assigned_user,
+                'tags' => $tags,
+                'metadata' => $metadata
+            );
+            
+            $result = self::create_lead($lead_data);
+            
+            // Update created_at if lead was created successfully
+            if (!is_wp_error($result) && $result) {
+                $wpdb->update(
+                    $table,
+                    array('created_at' => $created_at),
+                    array('id' => $result),
+                    array('%s'),
+                    array('%d')
+                );
+            }
+            
+            if (is_wp_error($result)) {
+                $errors[] = $result->get_error_message();
+            } else {
+                $created++;
+                
+                // Create some activities for this lead
+                $lead_id = $result;
+                $activity_types = array('note', 'call', 'email', 'meeting', 'followup');
+                $num_activities = rand(0, 5);
+                
+                for ($j = 0; $j < $num_activities; $j++) {
+                    $activity_type = $activity_types[array_rand($activity_types)];
+                    $activity_content = '';
+                    
+                    switch ($activity_type) {
+                        case 'note':
+                            $activity_content = array(
+                                'Initial contact made',
+                                'Follow-up required',
+                                'Interested in our services',
+                                'Requested more information',
+                                'Scheduled a meeting',
+                                'Sent proposal',
+                                'Waiting for response'
+                            )[array_rand(array('Initial contact made', 'Follow-up required', 'Interested in our services', 'Requested more information', 'Scheduled a meeting', 'Sent proposal', 'Waiting for response'))];
+                            break;
+                        case 'call':
+                            $activity_content = 'Phone call - ' . array('Left voicemail', 'Spoke with decision maker', 'No answer', 'Discussed pricing', 'Follow-up scheduled')[array_rand(array('Left voicemail', 'Spoke with decision maker', 'No answer', 'Discussed pricing', 'Follow-up scheduled'))];
+                            break;
+                        case 'email':
+                            $activity_content = 'Email sent - ' . array('Product information', 'Pricing details', 'Case study', 'Follow-up reminder')[array_rand(array('Product information', 'Pricing details', 'Case study', 'Follow-up reminder'))];
+                            break;
+                        case 'meeting':
+                            $activity_content = 'Meeting scheduled for ' . date('Y-m-d', strtotime('+' . rand(1, 30) . ' days'));
+                            break;
+                        case 'followup':
+                            $activity_content = 'Follow-up scheduled for ' . date('Y-m-d', strtotime('+' . rand(1, 14) . ' days'));
+                            break;
+                    }
+                    
+                    $activity_created_at = date('Y-m-d H:i:s', strtotime($created_at . ' +' . rand(0, $days_ago) . ' days'));
+                    
+                    $wpdb->insert($activities_table, array(
+                        'lead_id' => $lead_id,
+                        'type' => $activity_type,
+                        'content' => $activity_content,
+                        'created_by' => $assigned_user,
+                        'created_at' => $activity_created_at
+                    ));
+                }
+            }
+        }
+        
+        return array(
+            'success' => true,
+            'created' => $created,
+            'errors' => $errors,
+            'message' => sprintf('Generated %d fake leads with activities', $created)
+        );
     }
 }
 

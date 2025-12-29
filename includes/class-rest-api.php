@@ -173,6 +173,13 @@ class Rax_LMS_REST_API {
                 'permission_callback' => array($this, 'check_permissions')
             )
         ));
+        
+        // Fake data generation endpoint
+        register_rest_route($this->namespace, '/generate-fake-data', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'generate_fake_data'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
     }
     
     public function check_permissions() {
@@ -469,6 +476,22 @@ class Rax_LMS_REST_API {
         $report_data = Rax_LMS_Database::get_report_data($report_type, $date_from, $date_to);
         
         return new WP_REST_Response($report_data, 200);
+    }
+    
+    public function generate_fake_data($request) {
+        $params = $request->get_json_params();
+        $count = isset($params['count']) ? intval($params['count']) : 50;
+        
+        // Limit count to prevent abuse
+        $count = min($count, 200);
+        
+        $result = Rax_LMS_Database::generate_fake_data($count);
+        
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        
+        return new WP_REST_Response($result, 200);
     }
     
 }
