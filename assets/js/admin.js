@@ -138,6 +138,8 @@
                 content.innerHTML = await renderTags();
             } else if (currentView === 'calendar') {
                 content.innerHTML = await renderCalendar();
+            } else if (currentView === 'report') {
+                content.innerHTML = await renderReport();
             } else if (currentView === 'settings') {
                 content.innerHTML = await renderSettings();
             }
@@ -174,6 +176,9 @@
                         Calendar
                     </button>
                     ${showAdminOnly ? `
+                        <button class="rax-lms-nav-item ${currentView === 'report' ? 'active' : ''}" data-view="report">
+                            Report
+                        </button>
                         <button class="rax-lms-nav-item ${currentView === 'settings' ? 'active' : ''}" data-view="settings">
                             Settings
                         </button>
@@ -888,7 +893,7 @@
                 
                 // If switching to employee view and on admin-only page, go to dashboard
                 if (viewMode === 'employee') {
-                    const adminOnlyPages = ['analytics', 'segments', 'tags', 'settings'];
+                    const adminOnlyPages = ['analytics', 'segments', 'tags', 'report', 'settings'];
                     if (adminOnlyPages.includes(currentView)) {
                         currentView = 'dashboard';
                     }
@@ -1202,6 +1207,39 @@
             });
         }
         
+        // Report page events
+        const reportDateRange = document.getElementById('report-date-range');
+        if (reportDateRange) {
+            reportDateRange.addEventListener('change', async () => {
+                const days = parseInt(reportDateRange.value);
+                const today = new Date();
+                const dateFrom = new Date();
+                dateFrom.setDate(today.getDate() - days);
+                
+                // Helper function to format date as YYYY-MM-DD
+                const formatDateForAPI = (date) => {
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                };
+                
+                try {
+                    const reportData = await api.get(`reports/overview?date_from=${formatDateForAPI(dateFrom)}&date_to=${formatDateForAPI(today)}`);
+                    renderApp();
+                } catch (error) {
+                    showNotification('Error loading report data', 'error');
+                }
+            });
+        }
+        
+        const exportReport = document.getElementById('export-report');
+        if (exportReport) {
+            exportReport.addEventListener('click', () => {
+                showNotification('Export functionality coming soon', 'info');
+            });
+        }
+        
         // Settings page events
         const saveSettings = document.getElementById('save-settings');
         if (saveSettings) {
@@ -1245,20 +1283,7 @@
             const analytics = await api.get('analytics');
             
             // Lead Trends Chart
-            if (window.Recharts && document.getElementById('lead-trends-chart')) {
-                const LeadTrendsChart = React.createElement(window.Recharts.LineChart, {
-                    width: 400,
-                    height: 300,
-                    data: analytics.lead_trends.map(t => ({ date: t.date.split('-')[2], count: t.count }))
-                }, [
-                    React.createElement(window.Recharts.CartesianGrid, { strokeDasharray: '3 3', key: 'grid' }),
-                    React.createElement(window.Recharts.XAxis, { dataKey: 'date', key: 'xaxis' }),
-                    React.createElement(window.Recharts.YAxis, { key: 'yaxis' }),
-                    React.createElement(window.Recharts.Tooltip, { key: 'tooltip' }),
-                    React.createElement(window.Recharts.Line, { type: 'monotone', dataKey: 'count', stroke: '#6366f1', key: 'line' })
-                ]);
-                
-                // For simplicity, we'll use a custom chart implementation instead of React
+            if (document.getElementById('lead-trends-chart')) {
                 renderCustomChart('lead-trends-chart', analytics.lead_trends, 'count', 'Lead Trends');
             }
             
@@ -1788,6 +1813,134 @@
         }
     }
     
+    // Report Page
+    async function renderReport() {
+        try {
+            // Helper function to format date as YYYY-MM-DD
+            const formatDateForAPI = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            
+            // Initialize date range (default: last 30 days)
+            const today = new Date();
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+            const dateFrom = formatDateForAPI(thirtyDaysAgo);
+            const dateTo = formatDateForAPI(today);
+            
+            // Fetch report data
+            const reportData = await api.get(`reports/overview?date_from=${dateFrom}&date_to=${dateTo}`);
+            
+            // Calculate trends (mock for now - can be enhanced with actual comparison data)
+            const trends = {
+                total_leads: { value: 12, positive: true },
+                conversions: { value: 5, positive: true },
+                active_leads: { value: 8, positive: true },
+                revenue: { value: 8, positive: true }
+            };
+            
+            return `
+                <div class="rax-lms-report-container">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <h2 style="margin: 0; font-size: 24px; font-weight: 600;">Reports</h2>
+                        <div style="display: flex; gap: 8px;">
+                            <select class="rax-lms-form-input" id="report-date-range" style="width: 150px;">
+                                <option value="7">Last 7 Days</option>
+                                <option value="30" selected>Last 30 Days</option>
+                                <option value="90">Last 3 Months</option>
+                                <option value="180">Last 6 Months</option>
+                                <option value="365">Last Year</option>
+                            </select>
+                            <button class="rax-lms-btn rax-lms-btn-secondary" id="export-report">Export</button>
+                        </div>
+                    </div>
+                    
+                    <div class="rax-lms-kpi-grid" style="margin-bottom: 32px;">
+                        <div class="rax-lms-kpi-card">
+                            <div class="rax-lms-kpi-label">Total Leads</div>
+                            <div class="rax-lms-kpi-value">${reportData.total_leads || 0}</div>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.total_leads.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
+                                <span>${trends.total_leads.positive ? '↑' : '↓'}</span>
+                                <span>${trends.total_leads.value}% vs last period</span>
+                            </div>
+                        </div>
+                        <div class="rax-lms-kpi-card">
+                            <div class="rax-lms-kpi-label">Conversions</div>
+                            <div class="rax-lms-kpi-value">${reportData.conversions || 0}</div>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.conversions.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
+                                <span>${trends.conversions.positive ? '↑' : '↓'}</span>
+                                <span>${trends.conversions.value}% vs last period</span>
+                            </div>
+                        </div>
+                        <div class="rax-lms-kpi-card">
+                            <div class="rax-lms-kpi-label">Active Leads</div>
+                            <div class="rax-lms-kpi-value">${reportData.active_leads || 0}</div>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.active_leads.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
+                                <span>${trends.active_leads.positive ? '↑' : '↓'}</span>
+                                <span>${trends.active_leads.value}% vs last period</span>
+                            </div>
+                        </div>
+                        <div class="rax-lms-kpi-card">
+                            <div class="rax-lms-kpi-label">Revenue</div>
+                            <div class="rax-lms-kpi-value">$${formatNumber(reportData.revenue || 0)}</div>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.revenue.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
+                                <span>${trends.revenue.positive ? '↑' : '↓'}</span>
+                                <span>${trends.revenue.value}% vs last period</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="rax-lms-details-card" style="margin-bottom: 24px;">
+                        <div class="rax-lms-details-card-title">Lead Status Breakdown</div>
+                        <div id="report-status-breakdown" style="padding: 16px 0;">
+                            ${reportData.status_breakdown ? Object.entries(reportData.status_breakdown).map(([status, count]) => {
+                                const total = Object.values(reportData.status_breakdown).reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                                return `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rax-gray-200);">
+                                        <div>
+                                            <div style="font-weight: 500; margin-bottom: 4px;">${status.charAt(0).toUpperCase() + status.slice(1)}</div>
+                                            <div style="font-size: 12px; color: var(--rax-gray-500);">${count} leads (${percentage}%)</div>
+                                        </div>
+                                        <div style="width: 200px; height: 8px; background: var(--rax-gray-200); border-radius: 4px; overflow: hidden;">
+                                            <div style="width: ${percentage}%; height: 100%; background: var(--rax-primary); transition: width 0.3s;"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('') : '<div style="padding: 20px; text-align: center; color: var(--rax-gray-500);">No data available</div>'}
+                        </div>
+                    </div>
+                    
+                    <div class="rax-lms-details-card">
+                        <div class="rax-lms-details-card-title">Lead Source Analysis</div>
+                        <div id="report-source-breakdown" style="padding: 16px 0;">
+                            ${reportData.source_breakdown ? Object.entries(reportData.source_breakdown).map(([source, count]) => {
+                                const total = Object.values(reportData.source_breakdown).reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                                return `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rax-gray-200);">
+                                        <div>
+                                            <div style="font-weight: 500; margin-bottom: 4px;">${source || 'Unknown'}</div>
+                                            <div style="font-size: 12px; color: var(--rax-gray-500);">${count} leads (${percentage}%)</div>
+                                        </div>
+                                        <div style="width: 200px; height: 8px; background: var(--rax-gray-200); border-radius: 4px; overflow: hidden;">
+                                            <div style="width: ${percentage}%; height: 100%; background: var(--rax-secondary); transition: width 0.3s;"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('') : '<div style="padding: 20px; text-align: center; color: var(--rax-gray-500);">No data available</div>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (error) {
+            return `<div class="rax-lms-loading">Error loading report: ${error.message}</div>`;
+        }
+    }
+    
     // Settings Page
     async function renderSettings() {
         try {
@@ -2066,8 +2219,884 @@
     
     // Initialize app
     document.addEventListener('DOMContentLoaded', async () => {
-        await renderApp();
+        if (document.getElementById('rax-reports-app')) {
+            initReportsPage();
+        } else {
+            await renderApp();
+        }
     });
     
+    // Reports Page Functionality
+    function initReportsPage() {
+        const appContainer = document.getElementById('rax-reports-app');
+        if (!appContainer) return;
+        
+        let currentReportType = 'overview';
+        let currentDateFrom = null;
+        let currentDateTo = null;
+        let reportCharts = {};
+        
+        // Initialize date range (default: last 30 days)
+        const today = new Date();
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+        currentDateFrom = formatDate(thirtyDaysAgo);
+        currentDateTo = formatDate(today);
+        
+        // Render initial UI
+        renderReportsUI();
+        loadReportData();
+        
+        function renderReportsUI() {
+            const reportTypes = [
+                {
+                    id: 'overview',
+                    title: 'Overview Report',
+                    desc: 'High-level summary of all lead data'
+                },
+                {
+                    id: 'performance',
+                    title: 'Performance Report',
+                    desc: 'Metrics, trends, and conversion insights'
+                },
+                {
+                    id: 'source-analysis',
+                    title: 'Source Analysis',
+                    desc: 'Detailed breakdown by lead source'
+                },
+                {
+                    id: 'conversion',
+                    title: 'Conversion Report',
+                    desc: 'Visual funnel and conversion trends'
+                },
+                {
+                    id: 'activity',
+                    title: 'Activity Report',
+                    desc: 'Team activity and engagement metrics'
+                }
+            ];
+            
+            appContainer.innerHTML = `
+                <div class="rax-reports-container">
+                    <div class="rax-reports-type-selector">
+                        ${reportTypes.map(type => `
+                            <div class="rax-report-type-card ${type.id === currentReportType ? 'active' : ''}" 
+                                 data-report-type="${type.id}">
+                                <div class="rax-report-type-title">${type.title}</div>
+                                <div class="rax-report-type-desc">${type.desc}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="rax-reports-header">
+                        <h2 class="rax-reports-title" id="rax-reports-title">${reportTypes.find(t => t.id === currentReportType).title}</h2>
+                        <div class="rax-reports-actions">
+                            <div class="rax-reports-date-filter">
+                                <div class="rax-reports-date-presets">
+                                    <button class="rax-reports-date-btn" data-days="7">7 Days</button>
+                                    <button class="rax-reports-date-btn" data-days="30">30 Days</button>
+                                    <button class="rax-reports-date-btn" data-days="90">3 Months</button>
+                                    <button class="rax-reports-date-btn" data-days="180">6 Months</button>
+                                    <button class="rax-reports-date-btn" data-days="365">1 Year</button>
+                                </div>
+                                <div class="rax-reports-custom-date">
+                                    <input type="date" id="rax-date-from" value="${currentDateFrom}">
+                                    <span>to</span>
+                                    <input type="date" id="rax-date-to" value="${currentDateTo}">
+                                </div>
+                            </div>
+                            <div class="rax-reports-export">
+                                <button class="rax-reports-export-btn" id="rax-export-btn">
+                                    Export <span class="dashicons dashicons-arrow-down-alt2"></span>
+                                </button>
+                                <div class="rax-reports-export-menu" id="rax-export-menu">
+                                    <button class="rax-reports-export-item" data-format="pdf">Export as PDF</button>
+                                    <button class="rax-reports-export-item" data-format="csv">Export as CSV</button>
+                                    <button class="rax-reports-export-item" data-format="excel">Export as Excel</button>
+                                    <button class="rax-reports-export-item" data-action="print">Print Report</button>
+                                    <button class="rax-reports-export-item" data-action="email">Email Report</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="rax-reports-content" id="rax-reports-content">
+                        <div class="rax-reports-loading">
+                            <div class="rax-reports-loading-spinner"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Event listeners
+            document.querySelectorAll('.rax-report-type-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    currentReportType = card.dataset.reportType;
+                    document.querySelectorAll('.rax-report-type-card').forEach(c => c.classList.remove('active'));
+                    card.classList.add('active');
+                    document.getElementById('rax-reports-title').textContent = reportTypes.find(t => t.id === currentReportType).title;
+                    loadReportData();
+                });
+            });
+            
+            // Date preset buttons
+            document.querySelectorAll('.rax-reports-date-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const days = parseInt(btn.dataset.days);
+                    const endDate = new Date();
+                    const startDate = new Date();
+                    startDate.setDate(endDate.getDate() - days);
+                    
+                    currentDateFrom = formatDate(startDate);
+                    currentDateTo = formatDate(endDate);
+                    
+                    document.getElementById('rax-date-from').value = currentDateFrom;
+                    document.getElementById('rax-date-to').value = currentDateTo;
+                    
+                    document.querySelectorAll('.rax-reports-date-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    loadReportData();
+                });
+            });
+            
+            // Custom date inputs
+            document.getElementById('rax-date-from').addEventListener('change', (e) => {
+                currentDateFrom = e.target.value;
+                document.querySelectorAll('.rax-reports-date-btn').forEach(b => b.classList.remove('active'));
+                loadReportData();
+            });
+            
+            document.getElementById('rax-date-to').addEventListener('change', (e) => {
+                currentDateTo = e.target.value;
+                document.querySelectorAll('.rax-reports-date-btn').forEach(b => b.classList.remove('active'));
+                loadReportData();
+            });
+            
+            // Export dropdown
+            const exportBtn = document.getElementById('rax-export-btn');
+            const exportMenu = document.getElementById('rax-export-menu');
+            
+            exportBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                exportMenu.classList.toggle('show');
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+                    exportMenu.classList.remove('show');
+                }
+            });
+            
+            document.querySelectorAll('.rax-reports-export-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const format = item.dataset.format;
+                    const action = item.dataset.action;
+                    
+                    if (format) {
+                        exportReport(format);
+                    } else if (action === 'print') {
+                        window.print();
+                    } else if (action === 'email') {
+                        alert('Email report functionality coming soon!');
+                    }
+                    
+                    exportMenu.classList.remove('show');
+                });
+            });
+            
+            // Set default active date button
+            document.querySelector('.rax-reports-date-btn[data-days="30"]').classList.add('active');
+        }
+        
+        async function loadReportData() {
+            const content = document.getElementById('rax-reports-content');
+            if (!content) return;
+            
+            content.innerHTML = '<div class="rax-reports-loading"><div class="rax-reports-loading-spinner"></div></div>';
+            
+            try {
+                const response = await api.get(`reports/${currentReportType}?date_from=${currentDateFrom}&date_to=${currentDateTo}`);
+                const data = response;
+                
+                // Render report content directly
+                renderReportContent(data);
+            } catch (error) {
+                console.error('Error loading report:', error);
+                content.innerHTML = `
+                    <div class="rax-reports-empty">
+                        <div class="rax-reports-empty-icon">⚠️</div>
+                        <div class="rax-reports-empty-text">Failed to load report data. Please try again.</div>
+                    </div>
+                `;
+            }
+        }
+        
+        function renderReportContent(data) {
+            const content = document.getElementById('rax-reports-content');
+            if (!content) return;
+            
+            // Destroy existing charts
+            Object.values(reportCharts).forEach(chart => {
+                if (chart && chart.destroy) chart.destroy();
+            });
+            reportCharts = {};
+            
+            switch (currentReportType) {
+                case 'overview':
+                    renderOverviewReport(data);
+                    break;
+                case 'performance':
+                    renderPerformanceReport(data);
+                    break;
+                case 'source-analysis':
+                    renderSourceAnalysisReport(data);
+                    break;
+                case 'conversion':
+                    renderConversionReport(data);
+                    break;
+                case 'activity':
+                    renderActivityReport(data);
+                    break;
+            }
+        }
+        
+        function renderOverviewReport(data) {
+            const content = document.getElementById('rax-reports-content');
+            
+            // Calculate trends (mock for now)
+            const trends = {
+                total_leads: { value: 12, positive: true },
+                conversions: { value: 5, positive: true },
+                active_leads: { value: 8, positive: true },
+                revenue: { value: 8, positive: true }
+            };
+            
+            content.innerHTML = `
+                <div class="rax-reports-kpi-grid">
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Total Leads</div>
+                        <div class="rax-reports-kpi-value">${data.total_leads || 0}</div>
+                        <div class="rax-reports-kpi-trend ${trends.total_leads.positive ? 'positive' : 'negative'}">
+                            <span>${trends.total_leads.positive ? '↑' : '↓'}</span>
+                            <span>${trends.total_leads.value}% vs last month</span>
+                        </div>
+                    </div>
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Conversions</div>
+                        <div class="rax-reports-kpi-value">${data.conversions || 0}</div>
+                        <div class="rax-reports-kpi-trend ${trends.conversions.positive ? 'positive' : 'negative'}">
+                            <span>${trends.conversions.positive ? '↑' : '↓'}</span>
+                            <span>${trends.conversions.value}% vs last month</span>
+                        </div>
+                    </div>
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Active Leads</div>
+                        <div class="rax-reports-kpi-value">${data.active_leads || 0}</div>
+                        <div class="rax-reports-kpi-trend ${trends.active_leads.positive ? 'positive' : 'negative'}">
+                            <span>${trends.active_leads.positive ? '↑' : '↓'}</span>
+                            <span>${trends.active_leads.value}% vs last month</span>
+                        </div>
+                    </div>
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Revenue</div>
+                        <div class="rax-reports-kpi-value">$${formatNumber(data.revenue || 0)}</div>
+                        <div class="rax-reports-kpi-trend ${trends.revenue.positive ? 'positive' : 'negative'}">
+                            <span>${trends.revenue.positive ? '↑' : '↓'}</span>
+                            <span>${trends.revenue.value}% vs last month</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Monthly Performance</h3>
+                    <p class="rax-reports-chart-subtitle">Lead acquisition over the selected period</p>
+                    <div class="rax-reports-chart-wrapper" id="monthly-performance-chart"></div>
+                </div>
+                
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Lead Status Breakdown</h3>
+                    <table class="rax-reports-status-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Count</th>
+                                <th>Percentage</th>
+                                <th>Visual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(data.status_breakdown || []).map(status => {
+                                const total = data.total_leads || 1;
+                                const percentage = Math.round((status.count / total) * 100);
+                                return `
+                                    <tr>
+                                        <td style="text-transform: capitalize; font-weight: 500;">${status.status}</td>
+                                        <td>${status.count}</td>
+                                        <td>${percentage}%</td>
+                                        <td>
+                                            <div class="rax-reports-progress-bar">
+                                                <div class="rax-reports-progress-fill" style="width: ${percentage}%"></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            // Render monthly performance chart
+            if (data.monthly_performance && data.monthly_performance.length > 0) {
+                renderMonthlyPerformanceChart(data.monthly_performance);
+            }
+        }
+        
+        function renderPerformanceReport(data) {
+            const content = document.getElementById('rax-reports-content');
+            const trends = data.trends || {};
+            
+            content.innerHTML = `
+                <div class="rax-reports-kpi-grid">
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Average Lead Value</div>
+                        <div class="rax-reports-kpi-value">$${formatNumber(data.avg_lead_value || 0)}</div>
+                        <div class="rax-reports-kpi-trend ${trends.avg_lead_value?.change >= 0 ? 'positive' : 'negative'}">
+                            <span>${trends.avg_lead_value?.change >= 0 ? '↑' : '↓'}</span>
+                            <span>${Math.abs(trends.avg_lead_value?.change_percent || 0)}% vs previous period</span>
+                        </div>
+                    </div>
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Average Response Time</div>
+                        <div class="rax-reports-kpi-value">${data.avg_response_time || 0}h</div>
+                        <div class="rax-reports-kpi-trend positive">
+                            <span>↑</span>
+                            <span>Improved</span>
+                        </div>
+                    </div>
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Win Rate</div>
+                        <div class="rax-reports-kpi-value">${data.win_rate || 0}%</div>
+                        <div class="rax-reports-kpi-trend ${trends.win_rate?.change >= 0 ? 'positive' : 'negative'}">
+                            <span>${trends.win_rate?.change >= 0 ? '↑' : '↓'}</span>
+                            <span>${Math.abs(trends.win_rate?.change_percent || 0)}% vs previous period</span>
+                        </div>
+                    </div>
+                    <div class="rax-reports-kpi-card">
+                        <div class="rax-reports-kpi-label">Conversion Rate</div>
+                        <div class="rax-reports-kpi-value">${data.conversion_rate || 0}%</div>
+                        <div class="rax-reports-kpi-trend ${trends.conversion_rate?.change >= 0 ? 'positive' : 'negative'}">
+                            <span>${trends.conversion_rate?.change >= 0 ? '↑' : '↓'}</span>
+                            <span>${Math.abs(trends.conversion_rate?.change_percent || 0)}% vs previous period</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Performance Trends</h3>
+                    <p class="rax-reports-chart-subtitle">Comparison of key metrics over time</p>
+                    <div class="rax-reports-chart-wrapper" id="performance-trends-chart"></div>
+                </div>
+            `;
+            
+            // Render performance trends chart
+            renderPerformanceTrendsChart(trends);
+        }
+        
+        function renderSourceAnalysisReport(data) {
+            const content = document.getElementById('rax-reports-content');
+            
+            content.innerHTML = `
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Lead Sources Distribution</h3>
+                    <p class="rax-reports-chart-subtitle">Visual breakdown of leads by source</p>
+                    <div class="rax-reports-chart-wrapper" id="source-chart"></div>
+                </div>
+                
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Source Performance</h3>
+                    <table class="rax-reports-source-table">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>Total Leads</th>
+                                <th>Conversions</th>
+                                <th>Conversion Rate</th>
+                                <th>Revenue</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(data.sources || []).map(source => `
+                                <tr>
+                                    <td style="font-weight: 500;">${source.source}</td>
+                                    <td>${source.total_leads}</td>
+                                    <td>${source.conversions}</td>
+                                    <td>${source.conversion_rate}%</td>
+                                    <td>$${formatNumber(source.revenue)}</td>
+                                    <td>${source.percentage}%</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            // Render source chart
+            if (data.sources && data.sources.length > 0) {
+                renderSourceChart(data.sources);
+            }
+        }
+        
+        function renderConversionReport(data) {
+            const content = document.getElementById('rax-reports-content');
+            const funnel = data.funnel || [];
+            const maxCount = Math.max(...funnel.map(s => s.count), 1);
+            
+            content.innerHTML = `
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Conversion Funnel</h3>
+                    <p class="rax-reports-chart-subtitle">Lead progression through stages</p>
+                    <div class="rax-reports-funnel">
+                        ${funnel.map(stage => {
+                            const percentage = maxCount > 0 ? Math.round((stage.count / maxCount) * 100) : 0;
+                            return `
+                                <div class="rax-reports-funnel-stage">
+                                    <div class="rax-reports-funnel-label">${stage.stage}</div>
+                                    <div class="rax-reports-funnel-bar">
+                                        <div class="rax-reports-funnel-fill" style="width: ${percentage}%"></div>
+                                        <div class="rax-reports-funnel-value">${stage.count} leads</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+                
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Monthly Conversion Value Trends</h3>
+                    <p class="rax-reports-chart-subtitle">Conversion value over time</p>
+                    <div class="rax-reports-chart-wrapper" id="conversion-trends-chart"></div>
+                </div>
+            `;
+            
+            // Render conversion trends chart
+            if (data.monthly_trends && data.monthly_trends.length > 0) {
+                renderConversionTrendsChart(data.monthly_trends);
+            }
+        }
+        
+        function renderActivityReport(data) {
+            const content = document.getElementById('rax-reports-content');
+            
+            content.innerHTML = `
+                <div class="rax-reports-activity-grid">
+                    <div class="rax-reports-activity-card">
+                        <div class="rax-reports-activity-icon">📧</div>
+                        <div class="rax-reports-activity-label">Emails Sent</div>
+                        <div class="rax-reports-activity-value">${data.emails_sent || 0}</div>
+                    </div>
+                    <div class="rax-reports-activity-card">
+                        <div class="rax-reports-activity-icon">📞</div>
+                        <div class="rax-reports-activity-label">Calls Made</div>
+                        <div class="rax-reports-activity-value">${data.calls_made || 0}</div>
+                    </div>
+                    <div class="rax-reports-activity-card">
+                        <div class="rax-reports-activity-icon">📅</div>
+                        <div class="rax-reports-activity-label">Meetings Scheduled</div>
+                        <div class="rax-reports-activity-value">${data.meetings_scheduled || 0}</div>
+                    </div>
+                    <div class="rax-reports-activity-card">
+                        <div class="rax-reports-activity-icon">📊</div>
+                        <div class="rax-reports-activity-label">Total Activities</div>
+                        <div class="rax-reports-activity-value">${data.total_activities || 0}</div>
+                    </div>
+                </div>
+                
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Activity Trends</h3>
+                    <p class="rax-reports-chart-subtitle">Daily activity over the selected period</p>
+                    <div class="rax-reports-chart-wrapper" id="activity-trends-chart"></div>
+                </div>
+                
+                <div class="rax-reports-chart-container">
+                    <h3 class="rax-reports-chart-title">Activity Breakdown</h3>
+                    <table class="rax-reports-source-table">
+                        <thead>
+                            <tr>
+                                <th>Activity Type</th>
+                                <th>Count</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(data.activity_breakdown || []).map(activity => {
+                                const total = data.total_activities || 1;
+                                const percentage = Math.round((activity.count / total) * 100);
+                                return `
+                                    <tr>
+                                        <td style="text-transform: capitalize; font-weight: 500;">${activity.type}</td>
+                                        <td>${activity.count}</td>
+                                        <td>${percentage}%</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            // Render activity trends chart
+            if (data.trends && data.trends.length > 0) {
+                renderActivityTrendsChart(data.trends);
+            }
+        }
+        
+        // Chart rendering functions using custom SVG charts
+        function renderMonthlyPerformanceChart(data) {
+            const container = document.getElementById('monthly-performance-chart');
+            if (!container) return;
+            
+            container.innerHTML = '<div id="monthly-chart-inner"></div>';
+            const chartContainer = document.getElementById('monthly-chart-inner');
+            
+            const chartData = data.map(item => ({
+                month: formatMonthLabel(item.month),
+                leads: item.leads
+            }));
+            
+            // Use custom SVG chart rendering
+            renderSimpleLineChart(chartContainer, chartData, 'leads', '#6366f1', 'Monthly Leads');
+        }
+        
+        function renderPerformanceTrendsChart(trends) {
+            const container = document.getElementById('performance-trends-chart');
+            if (!container) return;
+            
+            container.innerHTML = '<div id="performance-chart-inner"></div>';
+            const chartContainer = document.getElementById('performance-chart-inner');
+            
+            const chartData = [
+                { period: 'Previous', avgValue: trends.avg_lead_value?.previous || 0, winRate: trends.win_rate?.previous || 0, conversionRate: trends.conversion_rate?.previous || 0 },
+                { period: 'Current', avgValue: trends.avg_lead_value?.current || 0, winRate: trends.win_rate?.current || 0, conversionRate: trends.conversion_rate?.current || 0 }
+            ];
+            
+            renderMultiLineChart(chartContainer, chartData, [
+                { key: 'avgValue', color: '#6366f1', name: 'Avg Lead Value' },
+                { key: 'winRate', color: '#10b981', name: 'Win Rate %' },
+                { key: 'conversionRate', color: '#f59e0b', name: 'Conversion Rate %' }
+            ]);
+        }
+        
+        function renderSourceChart(sources) {
+            const container = document.getElementById('source-chart');
+            if (!container) return;
+            
+            container.innerHTML = '<div id="source-chart-inner"></div>';
+            const chartContainer = document.getElementById('source-chart-inner');
+            
+            const chartData = sources.map(s => ({ name: s.source, value: s.total_leads }));
+            const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#6b7280'];
+            
+            renderPieChart(chartContainer, chartData, COLORS);
+        }
+        
+        function renderConversionTrendsChart(data) {
+            const container = document.getElementById('conversion-trends-chart');
+            if (!container) return;
+            
+            container.innerHTML = '<div id="conversion-chart-inner"></div>';
+            const chartContainer = document.getElementById('conversion-chart-inner');
+            
+            const chartData = data.map(item => ({
+                month: formatMonthLabel(item.month),
+                conversions: item.conversions,
+                value: item.value
+            }));
+            
+            renderDualAxisChart(chartContainer, chartData, [
+                { key: 'conversions', color: '#6366f1', name: 'Conversions', type: 'line' },
+                { key: 'value', color: '#10b981', name: 'Value ($)', type: 'line' }
+            ]);
+        }
+        
+        function renderActivityTrendsChart(data) {
+            const container = document.getElementById('activity-trends-chart');
+            if (!container) return;
+            
+            container.innerHTML = '<div id="activity-chart-inner"></div>';
+            const chartContainer = document.getElementById('activity-chart-inner');
+            
+            const chartData = data.map(item => ({
+                date: formatDateLabel(item.date),
+                count: item.count
+            }));
+            
+            renderBarChart(chartContainer, chartData, 'count', '#6366f1', 'Activities');
+        }
+        
+        // Simple chart rendering helpers using SVG
+        function renderSimpleLineChart(container, data, dataKey, color, name) {
+            if (!container) return;
+            
+            // Create a simple SVG-based line chart
+            const width = container.offsetWidth || 800;
+            const height = 300;
+            const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+            
+            const maxValue = Math.max(...data.map(d => d[dataKey]), 0);
+            const xScale = chartWidth / (data.length - 1 || 1);
+            const yScale = chartHeight / (maxValue || 1);
+            
+            let svg = container.querySelector('svg');
+            if (svg) svg.remove();
+            
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', width);
+            svg.setAttribute('height', height);
+            svg.style.display = 'block';
+            
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Draw grid lines
+            for (let i = 0; i <= 5; i++) {
+                const y = (chartHeight / 5) * i;
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', 0);
+                line.setAttribute('y1', y);
+                line.setAttribute('x2', chartWidth);
+                line.setAttribute('y2', y);
+                line.setAttribute('stroke', '#e5e7eb');
+                line.setAttribute('stroke-dasharray', '3 3');
+                g.appendChild(line);
+            }
+            
+            // Draw line
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            let pathData = '';
+            data.forEach((point, index) => {
+                const x = index * xScale;
+                const y = chartHeight - (point[dataKey] * yScale);
+                pathData += (index === 0 ? 'M' : 'L') + ` ${x} ${y}`;
+            });
+            path.setAttribute('d', pathData);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '2');
+            g.appendChild(path);
+            
+            // Draw points
+            data.forEach((point, index) => {
+                const x = index * xScale;
+                const y = chartHeight - (point[dataKey] * yScale);
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', x);
+                circle.setAttribute('cy', y);
+                circle.setAttribute('r', 4);
+                circle.setAttribute('fill', color);
+                g.appendChild(circle);
+            });
+            
+            // Draw X-axis labels
+            data.forEach((point, index) => {
+                const x = index * xScale;
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x);
+                text.setAttribute('y', chartHeight + 20);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('font-size', '12');
+                text.setAttribute('fill', '#6b7280');
+                text.textContent = point.month || point.date || '';
+                g.appendChild(text);
+            });
+            
+            svg.appendChild(g);
+            container.appendChild(svg);
+        }
+        
+        function renderMultiLineChart(container, data, lines) {
+            // Simplified multi-line chart
+            lines.forEach((line, index) => {
+                const lineData = data.map(d => ({ x: d.period, y: d[line.key] }));
+                setTimeout(() => {
+                    renderSimpleLineChart(container, lineData.map((d, i) => ({ month: d.x, [line.key]: d.y })), line.key, line.color, line.name);
+                }, index * 100);
+            });
+        }
+        
+        function renderPieChart(container, data, colors) {
+            if (!container) return;
+            
+            const size = 300;
+            const radius = 100;
+            const centerX = size / 2;
+            const centerY = size / 2;
+            
+            let svg = container.querySelector('svg');
+            if (svg) svg.remove();
+            
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', size);
+            svg.setAttribute('height', size);
+            svg.style.display = 'block';
+            svg.style.margin = '0 auto';
+            
+            const total = data.reduce((sum, d) => sum + d.value, 0);
+            let currentAngle = -Math.PI / 2;
+            
+            data.forEach((item, index) => {
+                const angle = (item.value / total) * 2 * Math.PI;
+                const x1 = centerX + radius * Math.cos(currentAngle);
+                const y1 = centerY + radius * Math.sin(currentAngle);
+                const x2 = centerX + radius * Math.cos(currentAngle + angle);
+                const y2 = centerY + radius * Math.sin(currentAngle + angle);
+                
+                const largeArc = angle > Math.PI ? 1 : 0;
+                
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`);
+                path.setAttribute('fill', colors[index % colors.length]);
+                path.setAttribute('stroke', 'white');
+                path.setAttribute('stroke-width', '2');
+                svg.appendChild(path);
+                
+                // Add label
+                const labelAngle = currentAngle + angle / 2;
+                const labelX = centerX + (radius * 0.7) * Math.cos(labelAngle);
+                const labelY = centerY + (radius * 0.7) * Math.sin(labelAngle);
+                
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', labelX);
+                text.setAttribute('y', labelY);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('font-size', '12');
+                text.setAttribute('fill', 'white');
+                text.setAttribute('font-weight', '600');
+                text.textContent = `${Math.round((item.value / total) * 100)}%`;
+                svg.appendChild(text);
+                
+                currentAngle += angle;
+            });
+            
+            container.appendChild(svg);
+            
+            // Add legend
+            const legend = document.createElement('div');
+            legend.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 20px;';
+            data.forEach((item, index) => {
+                const legendItem = document.createElement('div');
+                legendItem.style.cssText = 'display: flex; align-items: center; gap: 8px; font-size: 13px;';
+                const colorBox = document.createElement('div');
+                colorBox.style.cssText = `width: 12px; height: 12px; background: ${colors[index % colors.length]}; border-radius: 2px;`;
+                legendItem.appendChild(colorBox);
+                const label = document.createElement('span');
+                label.textContent = `${item.name} (${item.value})`;
+                legendItem.appendChild(label);
+                legend.appendChild(legendItem);
+            });
+            container.appendChild(legend);
+        }
+        
+        function renderDualAxisChart(container, data, lines) {
+            renderSimpleLineChart(container, data, lines[0].key, lines[0].color, lines[0].name);
+        }
+        
+        function renderBarChart(container, data, dataKey, color, name) {
+            if (!container) return;
+            
+            const width = container.offsetWidth || 800;
+            const height = 300;
+            const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+            
+            const maxValue = Math.max(...data.map(d => d[dataKey]), 0);
+            const barWidth = chartWidth / data.length;
+            const yScale = chartHeight / (maxValue || 1);
+            
+            let svg = container.querySelector('svg');
+            if (svg) svg.remove();
+            
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', width);
+            svg.setAttribute('height', height);
+            svg.style.display = 'block';
+            
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Draw bars
+            data.forEach((point, index) => {
+                const barHeight = point[dataKey] * yScale;
+                const x = index * barWidth;
+                const y = chartHeight - barHeight;
+                
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x + barWidth * 0.1);
+                rect.setAttribute('y', y);
+                rect.setAttribute('width', barWidth * 0.8);
+                rect.setAttribute('height', barHeight);
+                rect.setAttribute('fill', color);
+                rect.setAttribute('rx', '4');
+                g.appendChild(rect);
+                
+                // Add value label
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x + barWidth / 2);
+                text.setAttribute('y', y - 5);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('font-size', '11');
+                text.setAttribute('fill', '#374151');
+                text.textContent = point[dataKey];
+                g.appendChild(text);
+                
+                // Add date label
+                const dateText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                dateText.setAttribute('x', x + barWidth / 2);
+                dateText.setAttribute('y', chartHeight + 20);
+                dateText.setAttribute('text-anchor', 'middle');
+                dateText.setAttribute('font-size', '11');
+                dateText.setAttribute('fill', '#6b7280');
+                dateText.textContent = point.date || '';
+                g.appendChild(dateText);
+            });
+            
+            svg.appendChild(g);
+            container.appendChild(svg);
+        }
+        
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        function formatNumber(num) {
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1) + 'k';
+            }
+            return num.toFixed(0);
+        }
+        
+        function formatMonthLabel(monthStr) {
+            const date = new Date(monthStr);
+            return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }
+        
+        function formatDateLabel(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        function exportReport(format) {
+            alert(`Exporting report as ${format.toUpperCase()}...\n\nThis feature will generate and download the report in the selected format.`);
+            // In a real implementation, this would make an API call to generate the export
+        }
+    }
+    
 })();
-

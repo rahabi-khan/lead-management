@@ -164,6 +164,15 @@ class Rax_LMS_REST_API {
                 'permission_callback' => array($this, 'check_permissions')
             )
         ));
+        
+        // Reports endpoints
+        register_rest_route($this->namespace, '/reports/(?P<type>[a-z-]+)', array(
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'get_report'),
+                'permission_callback' => array($this, 'check_permissions')
+            )
+        ));
     }
     
     public function check_permissions() {
@@ -445,5 +454,22 @@ class Rax_LMS_REST_API {
         
         return new WP_REST_Response($result, 200);
     }
+    
+    public function get_report($request) {
+        $report_type = $request->get_param('type');
+        $date_from = $request->get_param('date_from');
+        $date_to = $request->get_param('date_to');
+        
+        $valid_types = array('overview', 'performance', 'source-analysis', 'conversion', 'activity');
+        
+        if (!in_array($report_type, $valid_types)) {
+            return new WP_Error('invalid_report_type', 'Invalid report type', array('status' => 400));
+        }
+        
+        $report_data = Rax_LMS_Database::get_report_data($report_type, $date_from, $date_to);
+        
+        return new WP_REST_Response($report_data, 200);
+    }
+    
 }
 
