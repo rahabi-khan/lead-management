@@ -83,12 +83,14 @@ class Rax_LMS_Admin {
     }
     
     private function get_users_list() {
-        $users = get_users(array('fields' => array('ID', 'display_name')));
+        $users = get_users(array('fields' => array('ID', 'display_name', 'user_email')));
         $list = array();
         foreach ($users as $user) {
             $list[] = array(
                 'id' => $user->ID,
-                'name' => $user->display_name
+                'name' => $user->display_name,
+                'email' => $user->user_email,
+                'avatar' => get_avatar_url($user->ID, array('size' => 32))
             );
         }
         return $list;
@@ -97,7 +99,6 @@ class Rax_LMS_Admin {
     public function render_admin_page() {
         ?>
         <div class="wrap rax-lms-admin">
-            <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
             <div id="rax-lms-app"></div>
         </div>
         <?php

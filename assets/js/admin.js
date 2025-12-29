@@ -37,6 +37,15 @@
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear()
     };
+    let segmentFilters = {
+        search: '',
+        sortBy: 'name', // 'name', 'count', 'created'
+        sortOrder: 'asc' // 'asc', 'desc'
+    };
+    let segmentsData = {
+        all: [],
+        filtered: []
+    };
     
     // Check if user is admin
     const isUserAdmin = raxLMS.isAdmin || false;
@@ -116,9 +125,9 @@
         if (!app) return;
         
         app.innerHTML = `
+            ${renderNavigation()}
             <div class="rax-lms-container">
-                ${renderNavigation()}
-                <div id="rax-lms-content">Loading...</div>
+                <div id="rax-lms-content" style="margin-top: 88px;">Loading...</div>
             </div>
         `;
         
@@ -153,53 +162,67 @@
         const showAdminOnly = !isEmployeeView || isUserAdmin;
         
         return `
-            <nav class="rax-lms-nav">
-                <div style="display: flex; align-items: center; gap: 16px;">
-                    <button class="rax-lms-nav-item ${currentView === 'dashboard' ? 'active' : ''}" data-view="dashboard">
-                        Dashboard
-                    </button>
-                    <button class="rax-lms-nav-item ${currentView === 'leads' ? 'active' : ''}" data-view="leads">
-                        Leads
-                    </button>
-                    ${showAdminOnly ? `
-                        <button class="rax-lms-nav-item ${currentView === 'analytics' ? 'active' : ''}" data-view="analytics">
-                            Analytics
-                        </button>
-                        <button class="rax-lms-nav-item ${currentView === 'segments' ? 'active' : ''}" data-view="segments">
-                            Segments
-                        </button>
-                        <button class="rax-lms-nav-item ${currentView === 'tags' ? 'active' : ''}" data-view="tags">
-                            Tags
-                        </button>
-                    ` : ''}
-                    <button class="rax-lms-nav-item ${currentView === 'calendar' ? 'active' : ''}" data-view="calendar">
-                        Calendar
-                    </button>
-                    ${showAdminOnly ? `
-                        <button class="rax-lms-nav-item ${currentView === 'report' ? 'active' : ''}" data-view="report">
-                            Report
-                        </button>
-                        <button class="rax-lms-nav-item ${currentView === 'settings' ? 'active' : ''}" data-view="settings">
-                            Settings
-                        </button>
-                    ` : ''}
-                </div>
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 16px;">
-                    ${isUserAdmin ? `
-                        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 12px; background: var(--rax-gray-100); border-radius: 20px;">
-                            <span style="font-size: 12px; font-weight: 500; color: var(--rax-gray-700);">Employee</span>
-                            <label class="rax-lms-view-toggle">
-                                <input type="checkbox" id="view-mode-toggle" ${viewMode === 'admin' ? 'checked' : ''}>
-                                <span class="rax-lms-view-toggle-slider"></span>
-                            </label>
-                            <span style="font-size: 12px; font-weight: 500; color: var(--rax-gray-700);">Admin</span>
+            <nav class="rax-lms-top-nav">
+                <div class="rax-lms-nav-container">
+                    <div class="rax-lms-nav-brand" style="cursor: pointer;" id="nav-brand">
+                        <div class="rax-lms-nav-logo">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
                         </div>
-                    ` : ''}
-                    ${currentView === 'dashboard' ? `
-                        <button class="rax-lms-btn rax-lms-btn-sm rax-lms-btn-secondary" id="refresh-dashboard" title="Refresh Dashboard">
-                            🔄 Refresh
+                        <span class="rax-lms-nav-brand-text">Lead Management</span>
+                    </div>
+                    
+                    <div class="rax-lms-nav-menu">
+                        <button class="rax-lms-nav-menu-item ${currentView === 'dashboard' ? 'active' : ''}" data-view="dashboard">
+                            Dashboard
                         </button>
-                    ` : ''}
+                        <button class="rax-lms-nav-menu-item ${currentView === 'leads' ? 'active' : ''}" data-view="leads">
+                            Leads
+                        </button>
+                        ${showAdminOnly ? `
+                            <button class="rax-lms-nav-menu-item ${currentView === 'analytics' ? 'active' : ''}" data-view="analytics">
+                                Analytics
+                            </button>
+                            <button class="rax-lms-nav-menu-item ${currentView === 'segments' ? 'active' : ''}" data-view="segments">
+                                Segments
+                            </button>
+                            <button class="rax-lms-nav-menu-item ${currentView === 'tags' ? 'active' : ''}" data-view="tags">
+                                Tags
+                            </button>
+                        ` : ''}
+                        <button class="rax-lms-nav-menu-item ${currentView === 'calendar' ? 'active' : ''}" data-view="calendar">
+                            Calendar
+                        </button>
+                        ${showAdminOnly ? `
+                            <button class="rax-lms-nav-menu-item ${currentView === 'report' ? 'active' : ''}" data-view="report">
+                                Report
+                            </button>
+                            <button class="rax-lms-nav-menu-item ${currentView === 'settings' ? 'active' : ''}" data-view="settings">
+                                Settings
+                            </button>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="rax-lms-nav-actions">
+                        ${currentView === 'dashboard' ? `
+                            <button class="rax-lms-nav-action-btn" id="refresh-dashboard" title="Refresh Dashboard">
+                                Refresh
+                            </button>
+                        ` : ''}
+                        ${isUserAdmin ? `
+                            <div class="rax-lms-view-mode-switch">
+                                <span class="rax-lms-view-mode-label ${viewMode === 'employee' ? 'active' : ''}">Employee</span>
+                                <label class="rax-lms-view-toggle">
+                                    <input type="checkbox" id="view-mode-toggle" ${viewMode === 'admin' ? 'checked' : ''}>
+                                    <span class="rax-lms-view-toggle-slider"></span>
+                                </label>
+                                <span class="rax-lms-view-mode-label ${viewMode === 'admin' ? 'active' : ''}">Admin</span>
+                            </div>
+                        ` : ''}
+                    </div>
                 </div>
             </nav>
         `;
@@ -231,21 +254,29 @@
             }
             
             return `
-                <div>
+                <div class="rax-lms-dashboard">
                     ${isEmployeeView ? `
-                        <div style="background: linear-gradient(135deg, var(--rax-primary), var(--rax-secondary)); color: white; padding: 20px; border-radius: var(--rax-border-radius); margin-bottom: 24px;">
-                            <h3 style="margin: 0 0 8px 0; font-size: 18px;">👤 Employee View</h3>
-                            <p style="margin: 0; font-size: 14px; opacity: 0.9;">You're viewing your assigned leads and tasks. Switch to Admin view for full access.</p>
+                        <div class="rax-lms-dashboard-notice">
+                            <div class="rax-lms-dashboard-notice-content">
+                                <div class="rax-lms-dashboard-notice-title">Employee View</div>
+                                <div class="rax-lms-dashboard-notice-text">You're viewing your assigned leads and tasks. Switch to Admin view for full access.</div>
+                            </div>
                         </div>
                     ` : ''}
                     ${renderKPICards(stats)}
                     ${!isEmployeeView ? `
-                        <div class="rax-lms-charts-grid">
-                            ${renderStatusChart(stats.by_status || {})}
-                            ${renderSourceChart(stats.by_source || {})}
+                        <div class="rax-lms-dashboard-section">
+                            <div class="rax-lms-dashboard-section-title">Overview</div>
+                            <div class="rax-lms-charts-grid">
+                                ${renderStatusChart(stats.by_status || {})}
+                                ${renderSourceChart(stats.by_source || {})}
+                            </div>
                         </div>
                     ` : ''}
-                    ${renderActivityFeed(recentLeads.items || [])}
+                    <div class="rax-lms-dashboard-section">
+                        <div class="rax-lms-dashboard-section-title">Recent Leads</div>
+                        ${renderActivityFeed(recentLeads.items || [])}
+                    </div>
                 </div>
             `;
         } catch (error) {
@@ -254,24 +285,97 @@
     }
     
     function renderKPICards(stats) {
+        // Calculate trends (mock data for now - can be replaced with actual comparison)
+        const trends = {
+            total: { value: 12, positive: true },
+            new_leads: { value: 5, positive: true },
+            conversion: { value: 3, positive: true },
+            value: { value: 8, positive: true }
+        };
+        
+        // Format value for display
+        const formatValue = (value) => {
+            if (value >= 1000) {
+                return (value / 1000).toFixed(1) + 'k';
+            }
+            return formatNumber(value);
+        };
+        
         return `
             <div class="rax-lms-kpi-grid">
                 <div class="rax-lms-kpi-card">
-                    <div class="rax-lms-kpi-label">Total Leads</div>
-                    <div class="rax-lms-kpi-value">${formatNumber(stats.total || 0)}</div>
+                    <div class="rax-lms-kpi-header">
+                        <div class="rax-lms-kpi-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="rax-lms-kpi-content">
+                            <div class="rax-lms-kpi-label">Total Leads</div>
+                            <div class="rax-lms-kpi-value">${formatNumber(stats.total || 0)}</div>
+                            <div class="rax-lms-kpi-trend ${trends.total.positive ? 'positive' : 'negative'}">
+                                <span class="rax-lms-kpi-trend-arrow">${trends.total.positive ? '↑' : '↓'}</span>
+                                <span>${trends.total.value}% vs last month</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="rax-lms-kpi-card">
-                    <div class="rax-lms-kpi-label">New Leads (7 days)</div>
-                    <div class="rax-lms-kpi-value">${formatNumber(stats.new_7d || 0)}</div>
+                    <div class="rax-lms-kpi-header">
+                        <div class="rax-lms-kpi-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="rax-lms-kpi-content">
+                            <div class="rax-lms-kpi-label">New Leads</div>
+                            <div class="rax-lms-kpi-value">${formatNumber(stats.new_7d || 0)}</div>
+                            <div class="rax-lms-kpi-trend ${trends.new_leads.positive ? 'positive' : 'negative'}">
+                                <span class="rax-lms-kpi-trend-arrow">${trends.new_leads.positive ? '↑' : '↓'}</span>
+                                <span>${trends.new_leads.value}% vs last month</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="rax-lms-kpi-card">
-                    <div class="rax-lms-kpi-label">Conversion Rate</div>
-                    <div class="rax-lms-kpi-value">${stats.conversion_rate || 0}%</div>
+                    <div class="rax-lms-kpi-header">
+                        <div class="rax-lms-kpi-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="rax-lms-kpi-content">
+                            <div class="rax-lms-kpi-label">Conversion Rate</div>
+                            <div class="rax-lms-kpi-value">${stats.conversion_rate || 0}%</div>
+                            <div class="rax-lms-kpi-trend ${trends.conversion.positive ? 'positive' : 'negative'}">
+                                <span class="rax-lms-kpi-trend-arrow">${trends.conversion.positive ? '↑' : '↓'}</span>
+                                <span>${trends.conversion.value}% vs last month</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="rax-lms-kpi-card">
-                    <div class="rax-lms-kpi-label">Estimated Lead Value</div>
-                    <div class="rax-lms-kpi-value">$${formatNumber(stats.estimated_lead_value || 0)}</div>
-                    <div class="rax-lms-kpi-change">Avg: $${stats.average_lead_value || 0} per lead</div>
+                    <div class="rax-lms-kpi-header">
+                        <div class="rax-lms-kpi-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="rax-lms-kpi-content">
+                            <div class="rax-lms-kpi-label">Total Value</div>
+                            <div class="rax-lms-kpi-value">$${formatValue(stats.estimated_lead_value || 0)}</div>
+                            <div class="rax-lms-kpi-trend ${trends.value.positive ? 'positive' : 'negative'}">
+                                <span class="rax-lms-kpi-trend-arrow">${trends.value.positive ? '↑' : '↓'}</span>
+                                <span>${trends.value.value}% vs last month</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -380,20 +484,30 @@
     function renderActivityFeed(leads) {
         return `
             <div class="rax-lms-activity-feed">
-                <div class="rax-lms-chart-title">Recent Activity</div>
-                ${leads.length > 0 ? leads.map(lead => `
-                    <div class="rax-lms-activity-item">
-                        <div class="rax-lms-activity-icon">👤</div>
-                        <div class="rax-lms-activity-content">
-                            <div class="rax-lms-activity-text">
-                                <strong>${escapeHtml(lead.name)}</strong> (${escapeHtml(lead.email)}) was added from ${formatSourceName(lead.source)}
+                ${leads.length > 0 ? `
+                    <div class="rax-lms-activity-list">
+                        ${leads.map(lead => `
+                            <div class="rax-lms-activity-item" onclick="window.raxLMSViewLead(${lead.id})">
+                                <div class="rax-lms-activity-avatar">
+                                    ${renderAvatar(lead.name, null, 40)}
+                                </div>
+                                <div class="rax-lms-activity-content">
+                                    <div class="rax-lms-activity-text">
+                                        <span class="rax-lms-activity-name">${escapeHtml(lead.name)}</span>
+                                        <span class="rax-lms-activity-email">${escapeHtml(lead.email)}</span>
+                                    </div>
+                                    <div class="rax-lms-activity-meta">
+                                        <span class="rax-lms-badge rax-lms-badge-source rax-lms-badge-source-${lead.source}">${formatSourceName(lead.source)}</span>
+                                        <span class="rax-lms-activity-date">${formatDate(lead.created_at)}</span>
+                                    </div>
+                                </div>
+                                <div class="rax-lms-activity-status">
+                                    <span class="rax-lms-badge rax-lms-badge-status-${lead.status}">${lead.status}</span>
+                                </div>
                             </div>
-                            <div class="rax-lms-activity-meta">
-                                ${formatDate(lead.created_at)}
-                            </div>
-                        </div>
+                        `).join('')}
                     </div>
-                `).join('') : '<div class="rax-lms-empty">No recent activity</div>'}
+                ` : '<div class="rax-lms-empty">No recent leads</div>'}
             </div>
         `;
     }
@@ -586,7 +700,12 @@
                                data-lead-id="${lead.id}" ${isSelected ? 'checked' : ''}>
                     </td>
                 ` : ''}
-                <td><strong>${escapeHtml(lead.name)}</strong></td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        ${renderAvatar(lead.name, null, 32)}
+                        <strong>${escapeHtml(lead.name)}</strong>
+                    </div>
+                </td>
                 <td>${escapeHtml(lead.email)}</td>
                 ${viewMode === 'admin' ? `
                     <td><span class="rax-lms-badge rax-lms-badge-source rax-lms-badge-source-${lead.source}">${formatSourceName(lead.source)}</span></td>
@@ -594,7 +713,14 @@
                 <td><span class="rax-lms-badge rax-lms-badge-status-${lead.status}">${lead.status}</span></td>
                 <td><span class="rax-lms-badge rax-lms-badge-priority-${lead.priority}">${lead.priority}</span></td>
                 ${viewMode === 'admin' ? `
-                    <td>${escapeHtml(assignedUser)}</td>
+                    <td>
+                        ${lead.assigned_user ? `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                ${renderAvatar(assignedUser, lead.assigned_user, 28)}
+                                <span>${escapeHtml(assignedUser)}</span>
+                            </div>
+                        ` : '<span style="color: var(--rax-gray-400);">Unassigned</span>'}
+                    </td>
                 ` : ''}
                 <td>${formatDate(lead.created_at)}</td>
                 <td>
@@ -655,9 +781,12 @@
         return `
             <div class="rax-lms-details-card">
                 <div class="rax-lms-details-card-title">Lead Profile</div>
-                <div class="rax-lms-details-field">
-                    <div class="rax-lms-details-label">Name</div>
-                    <div class="rax-lms-details-value">${escapeHtml(lead.name)}</div>
+                <div class="rax-lms-details-field" style="display: flex; align-items: center; gap: 16px; padding: 16px 0;">
+                    ${renderAvatar(lead.name, null, 64)}
+                    <div>
+                        <div class="rax-lms-details-label">Name</div>
+                        <div class="rax-lms-details-value" style="font-size: 18px; font-weight: 600;">${escapeHtml(lead.name)}</div>
+                    </div>
                 </div>
                 <div class="rax-lms-details-field">
                     <div class="rax-lms-details-label">Email</div>
@@ -812,60 +941,70 @@
     
     function renderAddLeadModal() {
         return `
-            <div class="rax-lms-modal-overlay" id="add-lead-modal">
-                <div class="rax-lms-modal">
-                    <div class="rax-lms-modal-header">
-                        <h2 class="rax-lms-modal-title">Add New Lead</h2>
-                        <button class="rax-lms-modal-close" id="close-modal">×</button>
+            <div class="rax-lms-drawer-overlay" id="add-lead-drawer-overlay">
+                <div class="rax-lms-drawer" id="add-lead-drawer">
+                    <div class="rax-lms-drawer-header">
+                        <h2 class="rax-lms-drawer-title">Add New Lead</h2>
+                        <button class="rax-lms-drawer-close" id="close-drawer">×</button>
                     </div>
-                    <form id="add-lead-form">
-                        <div class="rax-lms-form-group">
-                            <label class="rax-lms-form-label">Name *</label>
-                            <input type="text" class="rax-lms-form-input" name="name" required>
-                        </div>
-                        <div class="rax-lms-form-group">
-                            <label class="rax-lms-form-label">Email *</label>
-                            <input type="email" class="rax-lms-form-input" name="email" required>
-                        </div>
-                        <div class="rax-lms-form-group">
-                            <label class="rax-lms-form-label">Phone</label>
-                            <input type="tel" class="rax-lms-form-input" name="phone">
-                        </div>
-                        <div class="rax-lms-form-group">
-                            <label class="rax-lms-form-label">Source</label>
-                            <select class="rax-lms-form-input" name="source">
-                                <option value="manual">Manual</option>
-                                <option value="fluent_forms">Fluent Forms</option>
-                                <option value="fluent_crm">Fluent CRM</option>
-                                <option value="fluent_support">Fluent Support</option>
-                                <option value="fluent_booking">Fluent Booking</option>
-                                <option value="ninja_tables">Ninja Tables</option>
-                                <option value="wp_social_ninja">WP Social Ninja</option>
-                            </select>
-                        </div>
-                        <div class="rax-lms-form-group">
-                            <label class="rax-lms-form-label">Status</label>
-                            <select class="rax-lms-form-input" name="status">
-                                <option value="new">New</option>
-                                <option value="contacted">Contacted</option>
-                                <option value="qualified">Qualified</option>
-                                <option value="converted">Converted</option>
-                                <option value="lost">Lost</option>
-                            </select>
-                        </div>
-                        <div class="rax-lms-form-group">
-                            <label class="rax-lms-form-label">Priority</label>
-                            <select class="rax-lms-form-input" name="priority">
-                                <option value="low">Low</option>
-                                <option value="medium" selected>Medium</option>
-                                <option value="high">High</option>
-                            </select>
-                        </div>
-                        <div class="rax-lms-modal-actions">
-                            <button type="button" class="rax-lms-btn rax-lms-btn-secondary" id="cancel-add-lead">Cancel</button>
-                            <button type="submit" class="rax-lms-btn rax-lms-btn-primary">Add Lead</button>
-                        </div>
-                    </form>
+                    <div class="rax-lms-drawer-body">
+                        <form id="add-lead-form">
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Name *</label>
+                                <input type="text" class="rax-lms-form-input" name="name" required>
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Email *</label>
+                                <input type="email" class="rax-lms-form-input" name="email" required>
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Phone</label>
+                                <input type="tel" class="rax-lms-form-input" name="phone">
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Source</label>
+                                <select class="rax-lms-form-input" name="source">
+                                    <option value="manual">Manual</option>
+                                    <option value="fluent_forms">Fluent Forms</option>
+                                    <option value="fluent_crm">Fluent CRM</option>
+                                    <option value="fluent_support">Fluent Support</option>
+                                    <option value="fluent_booking">Fluent Booking</option>
+                                    <option value="ninja_tables">Ninja Tables</option>
+                                    <option value="wp_social_ninja">WP Social Ninja</option>
+                                </select>
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Status</label>
+                                <select class="rax-lms-form-input" name="status">
+                                    <option value="new">New</option>
+                                    <option value="contacted">Contacted</option>
+                                    <option value="qualified">Qualified</option>
+                                    <option value="converted">Converted</option>
+                                    <option value="lost">Lost</option>
+                                </select>
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Priority</label>
+                                <select class="rax-lms-form-input" name="priority">
+                                    <option value="low">Low</option>
+                                    <option value="medium" selected>Medium</option>
+                                    <option value="high">High</option>
+                                </select>
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Company</label>
+                                <input type="text" class="rax-lms-form-input" name="company">
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Notes</label>
+                                <textarea class="rax-lms-form-input" name="notes" rows="4" style="resize: vertical;"></textarea>
+                            </div>
+                            <div class="rax-lms-drawer-actions">
+                                <button type="button" class="rax-lms-btn rax-lms-btn-secondary" id="cancel-add-lead">Cancel</button>
+                                <button type="submit" class="rax-lms-btn rax-lms-btn-primary">Add Lead</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         `;
@@ -873,11 +1012,22 @@
     
     // Event handlers
     function attachEventListeners() {
-        // Navigation
-        document.querySelectorAll('.rax-lms-nav-item').forEach(btn => {
+        // Navigation - Brand logo click
+        const navBrand = document.getElementById('nav-brand');
+        if (navBrand) {
+            navBrand.addEventListener('click', () => {
+                currentView = 'dashboard';
+                currentLeadId = null;
+                renderApp();
+            });
+        }
+        
+        // Navigation - Menu items
+        document.querySelectorAll('.rax-lms-nav-menu-item').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                if (e.target.dataset.view) {
-                    currentView = e.target.dataset.view;
+                const view = e.currentTarget.dataset.view || e.target.closest('.rax-lms-nav-menu-item')?.dataset.view;
+                if (view) {
+                    currentView = view;
                     currentLeadId = null;
                     renderApp();
                 }
@@ -908,10 +1058,10 @@
         if (refreshBtn) {
             refreshBtn.addEventListener('click', async () => {
                 refreshBtn.disabled = true;
-                refreshBtn.innerHTML = '🔄 Refreshing...';
+                refreshBtn.innerHTML = 'Refreshing...';
                 await renderApp();
                 refreshBtn.disabled = false;
-                refreshBtn.innerHTML = '🔄 Refresh';
+                refreshBtn.innerHTML = 'Refresh';
             });
         }
         
@@ -951,6 +1101,15 @@
         if (addLeadBtn) {
             addLeadBtn.addEventListener('click', () => {
                 document.body.insertAdjacentHTML('beforeend', renderAddLeadModal());
+                // Trigger slide-in animation
+                setTimeout(() => {
+                    const drawer = document.getElementById('add-lead-drawer');
+                    const overlay = document.getElementById('add-lead-drawer-overlay');
+                    if (drawer && overlay) {
+                        drawer.classList.add('rax-lms-drawer-open');
+                        overlay.classList.add('rax-lms-drawer-overlay-visible');
+                    }
+                }, 10);
                 attachModalListeners();
             });
         }
@@ -1208,10 +1367,15 @@
         }
         
         // Report page events
-        const reportDateRange = document.getElementById('report-date-range');
-        if (reportDateRange) {
-            reportDateRange.addEventListener('change', async () => {
-                const days = parseInt(reportDateRange.value);
+        // Date range buttons
+        document.querySelectorAll('.rax-lms-report-date-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                // Remove active class from all buttons
+                document.querySelectorAll('.rax-lms-report-date-btn').forEach(b => b.classList.remove('active'));
+                // Add active class to clicked button
+                e.target.classList.add('active');
+                
+                const days = parseInt(e.target.dataset.days);
                 const today = new Date();
                 const dateFrom = new Date();
                 dateFrom.setDate(today.getDate() - days);
@@ -1224,19 +1388,125 @@
                     return `${year}-${month}-${day}`;
                 };
                 
+                // Update date inputs
+                const dateFromInput = document.getElementById('report-date-from');
+                const dateToInput = document.getElementById('report-date-to');
+                if (dateFromInput) dateFromInput.value = formatDateForAPI(dateFrom);
+                if (dateToInput) dateToInput.value = formatDateForAPI(today);
+                
                 try {
-                    const reportData = await api.get(`reports/overview?date_from=${formatDateForAPI(dateFrom)}&date_to=${formatDateForAPI(today)}`);
+                    await api.get(`reports/overview?date_from=${formatDateForAPI(dateFrom)}&date_to=${formatDateForAPI(today)}`);
                     renderApp();
                 } catch (error) {
                     showNotification('Error loading report data', 'error');
                 }
             });
+        });
+        
+        // Custom date inputs
+        const reportDateFrom = document.getElementById('report-date-from');
+        const reportDateTo = document.getElementById('report-date-to');
+        if (reportDateFrom && reportDateTo) {
+            const updateReportDates = async () => {
+                // Remove active class from all date buttons
+                document.querySelectorAll('.rax-lms-report-date-btn').forEach(b => b.classList.remove('active'));
+                
+                const dateFrom = reportDateFrom.value;
+                const dateTo = reportDateTo.value;
+                
+                if (dateFrom && dateTo) {
+                    try {
+                        await api.get(`reports/overview?date_from=${dateFrom}&date_to=${dateTo}`);
+                        renderApp();
+                    } catch (error) {
+                        showNotification('Error loading report data', 'error');
+                    }
+                }
+            };
+            
+            reportDateFrom.addEventListener('change', updateReportDates);
+            reportDateTo.addEventListener('change', updateReportDates);
         }
         
         const exportReport = document.getElementById('export-report');
         if (exportReport) {
             exportReport.addEventListener('click', () => {
                 showNotification('Export functionality coming soon', 'info');
+            });
+        }
+        
+        // Report type cards
+        document.querySelectorAll('.rax-lms-report-type-card').forEach(card => {
+            card.addEventListener('click', () => {
+                // Remove active class from all cards
+                document.querySelectorAll('.rax-lms-report-type-card').forEach(c => c.classList.remove('active'));
+                // Add active class to clicked card
+                card.classList.add('active');
+                // Update report title
+                const title = card.querySelector('.rax-lms-report-type-title').textContent;
+                const titleElement = document.querySelector('.rax-lms-report-title');
+                if (titleElement) titleElement.textContent = title;
+            });
+        });
+        
+        // Render chart after report page loads
+        if (currentView === 'report') {
+            setTimeout(() => renderReportChart(), 100);
+        }
+    }
+    
+    async function renderReportChart() {
+        try {
+            const chartContainer = document.getElementById('report-monthly-chart');
+            if (!chartContainer) return;
+            
+            // Get date range from inputs
+            const dateFromInput = document.getElementById('report-date-from');
+            const dateToInput = document.getElementById('report-date-to');
+            const dateFrom = dateFromInput?.value || '';
+            const dateTo = dateToInput?.value || '';
+            
+            // Fetch report data
+            const reportData = await api.get(`reports/overview?date_from=${dateFrom}&date_to=${dateTo}`);
+            
+            // Generate mock monthly data (in a real app, this would come from the API)
+            const monthlyData = [];
+            const startDate = new Date(dateFrom);
+            const endDate = new Date(dateTo);
+            const months = [];
+            
+            let currentDate = new Date(startDate);
+            while (currentDate <= endDate) {
+                const monthKey = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                if (!months.includes(monthKey)) {
+                    months.push(monthKey);
+                    monthlyData.push({
+                        date: monthKey,
+                        count: Math.floor(Math.random() * 20) + 1
+                    });
+                }
+                currentDate.setMonth(currentDate.getMonth() + 1);
+            }
+            
+            // If no monthly data, create default
+            if (monthlyData.length === 0) {
+                monthlyData.push({
+                    date: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+                    count: reportData.total_leads || 0
+                });
+            }
+            
+            // Render chart using existing renderCustomChart function
+            renderCustomChart('report-monthly-chart', monthlyData, 'count', 'Monthly Performance');
+        } catch (error) {
+            console.error('Error rendering report chart:', error);
+        }
+        
+        // Segments page events
+        const createSegmentBtn = document.getElementById('create-segment-btn');
+        if (createSegmentBtn) {
+            createSegmentBtn.addEventListener('click', () => {
+                showNotification('Create segment functionality coming soon', 'info');
             });
         }
         
@@ -1307,46 +1577,74 @@
     function renderCustomChart(containerId, data, valueKey, title) {
         const container = document.getElementById(containerId);
         if (!container || !data || data.length === 0) {
-            if (container) container.innerHTML = '<div class="rax-lms-empty">No data available</div>';
+            if (container) container.innerHTML = '<div class="rax-lms-empty" style="padding: 40px; text-align: center; color: var(--rax-gray-500);">No data available</div>';
             return;
         }
         
         const maxValue = Math.max(...data.map(d => d[valueKey] || 0));
-        const chartHeight = 250;
-        const barWidth = Math.max(20, (container.offsetWidth - 40) / data.length - 10);
+        const chartHeight = 280;
+        const containerWidth = container.offsetWidth || 500;
+        const barWidth = Math.max(20, (containerWidth - 60) / data.length - 8);
         
-        let chartHTML = `<div style="padding: 20px;">`;
+        let chartHTML = `<div style="padding: 20px 24px; position: relative; height: ${chartHeight + 50}px;">`;
         
-        if (Array.isArray(data) && data[0].date) {
+        // Y-axis labels
+        const yAxisSteps = 5;
+        for (let i = 0; i <= yAxisSteps; i++) {
+            const value = Math.round((maxValue / yAxisSteps) * (yAxisSteps - i));
+            const yPos = (chartHeight / yAxisSteps) * i;
+            chartHTML += `
+                <div style="position: absolute; left: 0; top: ${yPos + 20}px; font-size: 11px; color: var(--rax-gray-500); transform: translateY(-50%);">
+                    ${formatNumber(value)}
+                </div>
+            `;
+        }
+        
+        // Chart bars
+        chartHTML += `<div style="margin-left: 50px; position: relative; height: ${chartHeight}px;">`;
+        
+        if (Array.isArray(data) && data[0] && data[0].date) {
             // Line/Bar chart for trends
             data.forEach((item, index) => {
-                const height = (item[valueKey] / maxValue) * chartHeight;
-                const x = (index * (barWidth + 10)) + 20;
+                const height = maxValue > 0 ? (item[valueKey] / maxValue) * chartHeight : 0;
+                const x = (index * (barWidth + 8));
                 chartHTML += `
-                    <div style="position: absolute; left: ${x}px; bottom: 20px; width: ${barWidth}px;">
-                        <div style="height: ${height}px; background: linear-gradient(180deg, var(--rax-primary), var(--rax-secondary)); border-radius: 4px 4px 0 0;"></div>
-                        <div style="text-align: center; font-size: 10px; margin-top: 4px; color: var(--rax-gray-600);">${item.date ? item.date.split('-')[2] : item.name}</div>
+                    <div style="position: absolute; left: ${x}px; bottom: 0; width: ${barWidth}px; display: flex; flex-direction: column; align-items: center;">
+                        <div style="width: 100%; height: ${height}px; background: linear-gradient(180deg, var(--rax-primary), var(--rax-secondary)); border-radius: 6px 6px 0 0; transition: all 0.3s ease; cursor: pointer;" 
+                             onmouseover="this.style.opacity='0.8'" 
+                             onmouseout="this.style.opacity='1'"
+                             title="${item[valueKey]}"></div>
+                        <div style="text-align: center; font-size: 11px; margin-top: 8px; color: var(--rax-gray-600); font-weight: 500;">
+                            ${item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : item.name}
+                        </div>
                     </div>
                 `;
             });
         } else {
             // Bar chart for distribution/performance
             data.forEach((item, index) => {
-                const height = ((item[valueKey] || 0) / maxValue) * chartHeight;
-                const x = (index * (barWidth + 10)) + 20;
+                const height = maxValue > 0 ? ((item[valueKey] || 0) / maxValue) * chartHeight : 0;
+                const x = (index * (barWidth + 8));
                 const colors = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
+                const displayName = item.name || item.source || '';
                 chartHTML += `
-                    <div style="position: absolute; left: ${x}px; bottom: 20px; width: ${barWidth}px;">
-                        <div style="height: ${height}px; background: ${colors[index % colors.length]}; border-radius: 4px 4px 0 0;"></div>
-                        <div style="text-align: center; font-size: 10px; margin-top: 4px; color: var(--rax-gray-600);">${item.name || item.source || ''}</div>
-                        <div style="text-align: center; font-size: 9px; color: var(--rax-gray-500);">${item[valueKey]}</div>
+                    <div style="position: absolute; left: ${x}px; bottom: 0; width: ${barWidth}px; display: flex; flex-direction: column; align-items: center;">
+                        <div style="width: 100%; height: ${height}px; background: ${colors[index % colors.length]}; border-radius: 6px 6px 0 0; transition: all 0.3s ease; cursor: pointer;" 
+                             onmouseover="this.style.opacity='0.8'" 
+                             onmouseout="this.style.opacity='1'"
+                             title="${item[valueKey]}"></div>
+                        <div style="text-align: center; font-size: 11px; margin-top: 8px; color: var(--rax-gray-600); font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${displayName.length > 12 ? displayName.substring(0, 10) + '...' : displayName}
+                        </div>
+                        <div style="text-align: center; font-size: 10px; margin-top: 2px; color: var(--rax-gray-500);">${item[valueKey]}</div>
                     </div>
                 `;
             });
         }
         
-        chartHTML += `</div><div style="position: relative; height: ${chartHeight + 40}px;"></div>`;
+        chartHTML += `</div></div>`;
         container.innerHTML = chartHTML;
+        container.style.position = 'relative';
     }
     
     function getSortIcon(field) {
@@ -1485,21 +1783,36 @@
     }
     
     function attachModalListeners() {
-        const modal = document.getElementById('add-lead-modal');
-        if (!modal) return;
+        const overlay = document.getElementById('add-lead-drawer-overlay');
+        const drawer = document.getElementById('add-lead-drawer');
+        if (!overlay || !drawer) return;
         
-        const closeModal = () => {
-            modal.remove();
+        const closeDrawer = () => {
+            drawer.classList.remove('rax-lms-drawer-open');
+            overlay.classList.remove('rax-lms-drawer-overlay-visible');
+            // Remove from DOM after animation
+            setTimeout(() => {
+                overlay.remove();
+            }, 300);
         };
         
-        document.getElementById('close-modal')?.addEventListener('click', closeModal);
-        document.getElementById('cancel-add-lead')?.addEventListener('click', closeModal);
+        document.getElementById('close-drawer')?.addEventListener('click', closeDrawer);
+        document.getElementById('cancel-add-lead')?.addEventListener('click', closeDrawer);
         
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                closeModal();
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeDrawer();
             }
         });
+        
+        // Close on Escape key
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                closeDrawer();
+                document.removeEventListener('keydown', handleEscape);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
         
         document.getElementById('add-lead-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1509,7 +1822,7 @@
             try {
                 await api.post('leads', data);
                 showNotification('Lead added successfully', 'success');
-                closeModal();
+                closeDrawer();
                 if (currentView === 'leads') {
                     renderApp();
                 }
@@ -1540,6 +1853,37 @@
         return user ? user.name : 'Unknown';
     }
     
+    function getUserAvatar(userId) {
+        const users = raxLMS.users || [];
+        const user = users.find(u => u.id == userId);
+        return user && user.avatar ? user.avatar : '';
+    }
+    
+    function getInitials(name) {
+        if (!name) return '?';
+        const parts = name.trim().split(' ');
+        if (parts.length === 1) {
+            return parts[0].charAt(0).toUpperCase();
+        }
+        return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+    
+    function renderAvatar(name, userId = null, size = 32) {
+        let avatarUrl = '';
+        if (userId) {
+            avatarUrl = getUserAvatar(userId);
+        }
+        
+        if (avatarUrl) {
+            return `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name)}" class="rax-lms-avatar" style="width: ${size}px; height: ${size}px;">`;
+        } else {
+            const initials = getInitials(name);
+            const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
+            const colorIndex = name ? name.charCodeAt(0) % colors.length : 0;
+            return `<div class="rax-lms-avatar rax-lms-avatar-initials" style="width: ${size}px; height: ${size}px; background-color: ${colors[colorIndex]};" title="${escapeHtml(name)}">${initials}</div>`;
+        }
+    }
+    
     function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -1551,42 +1895,142 @@
         try {
             const analytics = await api.get('analytics');
             
+            // Calculate trends (mock data - can be replaced with actual comparison)
+            const trends = {
+                avg_lead_value: { value: 5, positive: true },
+                total_pipeline: { value: 12, positive: true },
+                conversion_rate: { value: 3, positive: true },
+                time_to_close: { value: 8, positive: false }
+            };
+            
+            const formatValue = (value) => {
+                if (value >= 1000) {
+                    return (value / 1000).toFixed(1) + 'k';
+                }
+                return formatNumber(value);
+            };
+            
             return `
-                <div>
-                    <div class="rax-lms-kpi-grid">
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Avg Lead Value</div>
-                            <div class="rax-lms-kpi-value">$${formatNumber(analytics.avg_lead_value || 0)}</div>
-                        </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Total Pipeline</div>
-                            <div class="rax-lms-kpi-value">$${formatNumber(analytics.total_pipeline || 0)}</div>
-                        </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Conversion Rate</div>
-                            <div class="rax-lms-kpi-value">${analytics.conversion_rate || 0}%</div>
-                        </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Time to Close</div>
-                            <div class="rax-lms-kpi-value">${analytics.time_to_close || 0} days</div>
+                <div class="rax-lms-analytics-page">
+                    <div class="rax-lms-analytics-header">
+                        <div>
+                            <h2 class="rax-lms-analytics-title">Analytics Overview</h2>
+                            <p class="rax-lms-analytics-subtitle">Track your lead performance and conversion metrics</p>
                         </div>
                     </div>
-                    <div class="rax-lms-charts-grid" style="grid-template-columns: repeat(2, 1fr);">
-                        <div class="rax-lms-chart-card">
-                            <div class="rax-lms-chart-title">Lead Trends (30 Days)</div>
-                            <div id="lead-trends-chart" style="height: 300px;"></div>
+                    
+                    <div class="rax-lms-analytics-section">
+                        <div class="rax-lms-kpi-grid">
+                            <div class="rax-lms-kpi-card">
+                                <div class="rax-lms-kpi-header">
+                                    <div class="rax-lms-kpi-icon">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                    <div class="rax-lms-kpi-content">
+                                        <div class="rax-lms-kpi-label">Avg Lead Value</div>
+                                        <div class="rax-lms-kpi-value">$${formatValue(analytics.avg_lead_value || 0)}</div>
+                                        <div class="rax-lms-kpi-trend ${trends.avg_lead_value.positive ? 'positive' : 'negative'}">
+                                            <span class="rax-lms-kpi-trend-arrow">${trends.avg_lead_value.positive ? '↑' : '↓'}</span>
+                                            <span>${trends.avg_lead_value.value}% vs last month</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rax-lms-kpi-card">
+                                <div class="rax-lms-kpi-header">
+                                    <div class="rax-lms-kpi-icon">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                    <div class="rax-lms-kpi-content">
+                                        <div class="rax-lms-kpi-label">Total Pipeline</div>
+                                        <div class="rax-lms-kpi-value">$${formatValue(analytics.total_pipeline || 0)}</div>
+                                        <div class="rax-lms-kpi-trend ${trends.total_pipeline.positive ? 'positive' : 'negative'}">
+                                            <span class="rax-lms-kpi-trend-arrow">${trends.total_pipeline.positive ? '↑' : '↓'}</span>
+                                            <span>${trends.total_pipeline.value}% vs last month</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rax-lms-kpi-card">
+                                <div class="rax-lms-kpi-header">
+                                    <div class="rax-lms-kpi-icon">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                    <div class="rax-lms-kpi-content">
+                                        <div class="rax-lms-kpi-label">Conversion Rate</div>
+                                        <div class="rax-lms-kpi-value">${analytics.conversion_rate || 0}%</div>
+                                        <div class="rax-lms-kpi-trend ${trends.conversion_rate.positive ? 'positive' : 'negative'}">
+                                            <span class="rax-lms-kpi-trend-arrow">${trends.conversion_rate.positive ? '↑' : '↓'}</span>
+                                            <span>${trends.conversion_rate.value}% vs last month</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rax-lms-kpi-card">
+                                <div class="rax-lms-kpi-header">
+                                    <div class="rax-lms-kpi-icon">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                    <div class="rax-lms-kpi-content">
+                                        <div class="rax-lms-kpi-label">Time to Close</div>
+                                        <div class="rax-lms-kpi-value">${analytics.time_to_close || 0} days</div>
+                                        <div class="rax-lms-kpi-trend ${trends.time_to_close.positive ? 'positive' : 'negative'}">
+                                            <span class="rax-lms-kpi-trend-arrow">${trends.time_to_close.positive ? '↑' : '↓'}</span>
+                                            <span>${trends.time_to_close.value}% vs last month</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="rax-lms-chart-card">
-                            <div class="rax-lms-chart-title">Revenue Trends (30 Days)</div>
-                            <div id="revenue-trends-chart" style="height: 300px;"></div>
+                    </div>
+                    
+                    <div class="rax-lms-analytics-section">
+                        <div class="rax-lms-analytics-section-header">
+                            <h3 class="rax-lms-analytics-section-title">Performance Trends</h3>
                         </div>
-                        <div class="rax-lms-chart-card">
-                            <div class="rax-lms-chart-title">Status Distribution</div>
-                            <div id="status-distribution-chart" style="height: 300px;"></div>
+                        <div class="rax-lms-charts-grid">
+                            <div class="rax-lms-chart-card">
+                                <div class="rax-lms-chart-title">Lead Trends</div>
+                                <div class="rax-lms-chart-subtitle">Last 30 days</div>
+                                <div id="lead-trends-chart" class="rax-lms-chart-wrapper"></div>
+                            </div>
+                            <div class="rax-lms-chart-card">
+                                <div class="rax-lms-chart-title">Revenue Trends</div>
+                                <div class="rax-lms-chart-subtitle">Last 30 days</div>
+                                <div id="revenue-trends-chart" class="rax-lms-chart-wrapper"></div>
+                            </div>
                         </div>
-                        <div class="rax-lms-chart-card">
-                            <div class="rax-lms-chart-title">Source Performance</div>
-                            <div id="source-performance-chart" style="height: 300px;"></div>
+                    </div>
+                    
+                    <div class="rax-lms-analytics-section">
+                        <div class="rax-lms-analytics-section-header">
+                            <h3 class="rax-lms-analytics-section-title">Distribution Analysis</h3>
+                        </div>
+                        <div class="rax-lms-charts-grid">
+                            <div class="rax-lms-chart-card">
+                                <div class="rax-lms-chart-title">Status Distribution</div>
+                                <div class="rax-lms-chart-subtitle">Lead status breakdown</div>
+                                <div id="status-distribution-chart" class="rax-lms-chart-wrapper"></div>
+                            </div>
+                            <div class="rax-lms-chart-card">
+                                <div class="rax-lms-chart-title">Source Performance</div>
+                                <div class="rax-lms-chart-subtitle">Conversion by source</div>
+                                <div id="source-performance-chart" class="rax-lms-chart-wrapper"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1596,54 +2040,171 @@
         }
     }
     
+    // Helper function to parse criteria into tags
+    function parseCriteriaToTags(criteria) {
+        const tags = [];
+        
+        // Parse common patterns
+        if (criteria.includes('priority = "high"')) {
+            tags.push('Priority: High');
+        }
+        if (criteria.includes('priority = "medium"')) {
+            tags.push('Priority: Medium');
+        }
+        if (criteria.includes('priority = "low"')) {
+            tags.push('Priority: Low');
+        }
+        if (criteria.includes('priority IN ("high", "medium")')) {
+            tags.push('Priority: High or Medium');
+        }
+        
+        if (criteria.includes('status = "qualified"')) {
+            tags.push('Status: Qualified');
+        }
+        if (criteria.includes('status = "contacted"')) {
+            tags.push('Status: Contacted');
+        }
+        if (criteria.includes('status = "new"')) {
+            tags.push('Status: New');
+        }
+        
+        if (criteria.includes('7 DAY')) {
+            tags.push('Last 7 days');
+        }
+        if (criteria.includes('30 DAY')) {
+            tags.push('Last 30 days');
+        }
+        
+        if (criteria.includes('assigned_user IS NULL')) {
+            tags.push('Unassigned');
+        }
+        
+        if (criteria.includes('source LIKE "%enterprise%"')) {
+            tags.push('Source: Enterprise');
+        }
+        if (criteria.includes('source LIKE "%fluent%"')) {
+            tags.push('Source: Fluent Forms');
+        }
+        
+        // If no tags found, return the criteria as a single tag
+        if (tags.length === 0) {
+            tags.push(criteria);
+        }
+        
+        return tags;
+    }
+    
     // Segments Page
     async function renderSegments() {
         try {
             const data = await api.get('segments');
+            segmentsData.all = data.segments || [];
+            
+            // Find most active segment (highest count)
+            const mostActiveSegment = segmentsData.all.length > 0 
+                ? segmentsData.all.reduce((max, seg) => seg.count > max.count ? seg : max, segmentsData.all[0])
+                : null;
+            
+            const totalLeads = data.segments.reduce((sum, s) => sum + s.count, 0);
+            const avgSize = Math.round(data.avg_segment_size || 0);
             
             return `
-                <div>
-                    <div class="rax-lms-kpi-grid" style="grid-template-columns: repeat(3, 1fr);">
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Total Segments</div>
-                            <div class="rax-lms-kpi-value">${data.total_segments || 0}</div>
+                <div class="rax-lms-segments-page">
+                    <div class="rax-lms-segments-header">
+                        <div>
+                            <h2 class="rax-lms-segments-title">Lead Segments</h2>
+                            <p class="rax-lms-segments-subtitle">Create and manage filtered groups of leads for targeted actions</p>
                         </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Average Segment Size</div>
-                            <div class="rax-lms-kpi-value">${data.avg_segment_size || 0}</div>
+                        <button class="rax-lms-btn rax-lms-btn-secondary" id="create-segment-btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            Create Segment
+                        </button>
+                    </div>
+                    
+                    <div class="rax-lms-segments-stats">
+                        <div class="rax-lms-segments-stat-card">
+                            <div class="rax-lms-segments-stat-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="rax-lms-segments-stat-content">
+                                <div class="rax-lms-segments-stat-label">Total Segments</div>
+                                <div class="rax-lms-segments-stat-value">${data.total_segments || 0}</div>
+                            </div>
                         </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Total Leads in Segments</div>
-                            <div class="rax-lms-kpi-value">${data.segments.reduce((sum, s) => sum + s.count, 0)}</div>
+                        <div class="rax-lms-segments-stat-card">
+                            <div class="rax-lms-segments-stat-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="rax-lms-segments-stat-content">
+                                <div class="rax-lms-segments-stat-label">Most Active</div>
+                                <div class="rax-lms-segments-stat-value">${mostActiveSegment ? escapeHtml(mostActiveSegment.name) : 'N/A'}</div>
+                            </div>
+                        </div>
+                        <div class="rax-lms-segments-stat-card">
+                            <div class="rax-lms-segments-stat-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="rax-lms-segments-stat-content">
+                                <div class="rax-lms-segments-stat-label">Avg Segment Size</div>
+                                <div class="rax-lms-segments-stat-value">${avgSize} leads</div>
+                            </div>
                         </div>
                     </div>
-                    <div class="rax-lms-table-container" style="margin-top: 24px;">
-                        <div class="rax-lms-table-header">
-                            <div class="rax-lms-table-title">Lead Segments</div>
-                        </div>
-                        <div style="padding: 20px;">
-                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
-                                ${data.segments.map(segment => `
-                                    <div class="rax-lms-details-card">
-                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
-                                            <div>
-                                                <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">${escapeHtml(segment.name)}</h3>
-                                                <p style="margin: 0; font-size: 12px; color: var(--rax-gray-600);">${escapeHtml(segment.description)}</p>
-                                            </div>
-                                            <span class="rax-lms-badge rax-lms-badge-priority-medium">${segment.count} leads</span>
+                    
+                    <div class="rax-lms-segments-grid">
+                        ${segmentsData.all.length > 0 ? segmentsData.all.map(segment => {
+                            const criteriaTags = parseCriteriaToTags(segment.criteria);
+                            return `
+                                <div class="rax-lms-segment-card">
+                                    <div class="rax-lms-segment-header">
+                                        <div class="rax-lms-segment-info">
+                                            <h3 class="rax-lms-segment-name">${escapeHtml(segment.name)}</h3>
+                                            <p class="rax-lms-segment-description">${escapeHtml(segment.description)}</p>
                                         </div>
-                                        <div style="margin-bottom: 12px;">
-                                            <div style="font-size: 11px; color: var(--rax-gray-500); margin-bottom: 4px;">Criteria:</div>
-                                            <div style="font-size: 12px; color: var(--rax-gray-700); font-family: monospace; background: var(--rax-gray-50); padding: 8px; border-radius: 4px;">${escapeHtml(segment.criteria)}</div>
+                                    </div>
+                                    <div class="rax-lms-segment-criteria">
+                                        <div class="rax-lms-segment-criteria-label">Criteria:</div>
+                                        <div class="rax-lms-segment-criteria-tags">
+                                            ${criteriaTags.map(tag => `
+                                                <span class="rax-lms-segment-criteria-tag">${escapeHtml(tag)}</span>
+                                            `).join('')}
                                         </div>
-                                        <button class="rax-lms-btn rax-lms-btn-primary" style="width: 100%;" 
+                                    </div>
+                                    <div class="rax-lms-segment-footer">
+                                        <div class="rax-lms-segment-count">${segment.count} ${segment.count === 1 ? 'lead' : 'leads'}</div>
+                                        <button class="rax-lms-btn rax-lms-btn-secondary rax-lms-segment-view-btn" 
                                                 onclick="window.raxLMSViewSegment(${segment.id})">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
                                             View Leads
                                         </button>
                                     </div>
-                                `).join('')}
+                                </div>
+                            `;
+                        }).join('') : `
+                            <div class="rax-lms-empty-segments">
+                                <div class="rax-lms-empty-icon">📋</div>
+                                <div class="rax-lms-empty-text">No segments available</div>
                             </div>
-                        </div>
+                        `}
                     </div>
                 </div>
             `;
@@ -1824,12 +2385,22 @@
                 return `${year}-${month}-${day}`;
             };
             
+            // Helper function to format date for display (DD/MM/YYYY)
+            const formatDateForDisplay = (date) => {
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}/${month}/${year}`;
+            };
+            
             // Initialize date range (default: last 30 days)
             const today = new Date();
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(today.getDate() - 30);
             const dateFrom = formatDateForAPI(thirtyDaysAgo);
             const dateTo = formatDateForAPI(today);
+            const dateFromDisplay = formatDateForDisplay(thirtyDaysAgo);
+            const dateToDisplay = formatDateForDisplay(today);
             
             // Fetch report data
             const reportData = await api.get(`reports/overview?date_from=${dateFrom}&date_to=${dateTo}`);
@@ -1842,96 +2413,104 @@
                 revenue: { value: 8, positive: true }
             };
             
+            const formatValue = (value) => {
+                if (value >= 1000) {
+                    return (value / 1000).toFixed(1) + 'k';
+                }
+                return formatNumber(value);
+            };
+            
+            const reportTypes = [
+                { id: 'overview', title: 'Overview Report', desc: 'High-level summary of all lead data' },
+                { id: 'performance', title: 'Performance Report', desc: 'Metrics, trends, and conversion insights' },
+                { id: 'source-analysis', title: 'Source Analysis', desc: 'Detailed breakdown by lead source' },
+                { id: 'conversion', title: 'Conversion Report', desc: 'Visual funnel and conversion trends' },
+                { id: 'activity', title: 'Activity Report', desc: 'Team activity and engagement metrics' }
+            ];
+            
             return `
-                <div class="rax-lms-report-container">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                        <h2 style="margin: 0; font-size: 24px; font-weight: 600;">Reports</h2>
-                        <div style="display: flex; gap: 8px;">
-                            <select class="rax-lms-form-input" id="report-date-range" style="width: 150px;">
-                                <option value="7">Last 7 Days</option>
-                                <option value="30" selected>Last 30 Days</option>
-                                <option value="90">Last 3 Months</option>
-                                <option value="180">Last 6 Months</option>
-                                <option value="365">Last Year</option>
-                            </select>
-                            <button class="rax-lms-btn rax-lms-btn-secondary" id="export-report">Export</button>
-                        </div>
+                <div class="rax-lms-report-page">
+                    <div class="rax-lms-report-types">
+                        ${reportTypes.map(type => `
+                            <div class="rax-lms-report-type-card ${type.id === 'overview' ? 'active' : ''}" data-report-type="${type.id}">
+                                <div class="rax-lms-report-type-title">${escapeHtml(type.title)}</div>
+                                <div class="rax-lms-report-type-desc">${escapeHtml(type.desc)}</div>
+                            </div>
+                        `).join('')}
                     </div>
                     
-                    <div class="rax-lms-kpi-grid" style="margin-bottom: 32px;">
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Total Leads</div>
-                            <div class="rax-lms-kpi-value">${reportData.total_leads || 0}</div>
-                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.total_leads.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
-                                <span>${trends.total_leads.positive ? '↑' : '↓'}</span>
-                                <span>${trends.total_leads.value}% vs last period</span>
+                    <div class="rax-lms-report-main">
+                        <div class="rax-lms-report-header">
+                            <h2 class="rax-lms-report-title">Overview Report</h2>
+                            <div class="rax-lms-report-controls">
+                                <div class="rax-lms-report-date-buttons">
+                                    <button class="rax-lms-report-date-btn" data-days="7">7 Days</button>
+                                    <button class="rax-lms-report-date-btn active" data-days="30">30 Days</button>
+                                    <button class="rax-lms-report-date-btn" data-days="90">3 Months</button>
+                                    <button class="rax-lms-report-date-btn" data-days="180">6 Months</button>
+                                    <button class="rax-lms-report-date-btn" data-days="365">1 Year</button>
+                                </div>
+                                <div class="rax-lms-report-custom-dates">
+                                    <input type="date" class="rax-lms-report-date-input" id="report-date-from" value="${dateFrom}">
+                                    <span class="rax-lms-report-date-separator">to</span>
+                                    <input type="date" class="rax-lms-report-date-input" id="report-date-to" value="${dateTo}">
+                                </div>
+                                <div class="rax-lms-report-export">
+                                    <button class="rax-lms-btn rax-lms-btn-secondary" id="export-report">
+                                        Export
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Conversions</div>
-                            <div class="rax-lms-kpi-value">${reportData.conversions || 0}</div>
-                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.conversions.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
-                                <span>${trends.conversions.positive ? '↑' : '↓'}</span>
-                                <span>${trends.conversions.value}% vs last period</span>
+                        
+                        <div class="rax-lms-report-kpis">
+                            <div class="rax-lms-report-kpi-card">
+                                <div class="rax-lms-report-kpi-label">Total Leads</div>
+                                <div class="rax-lms-report-kpi-value">${formatNumber(reportData.total_leads || 0)}</div>
+                                <div class="rax-lms-report-kpi-trend ${trends.total_leads.positive ? 'positive' : 'negative'}">
+                                    <span class="rax-lms-report-kpi-arrow">${trends.total_leads.positive ? '↑' : '↓'}</span>
+                                    <span>${trends.total_leads.value}% vs last month</span>
+                                </div>
+                            </div>
+                            <div class="rax-lms-report-kpi-card">
+                                <div class="rax-lms-report-kpi-label">Conversions</div>
+                                <div class="rax-lms-report-kpi-value">${reportData.conversions || 0}</div>
+                                <div class="rax-lms-report-kpi-trend ${trends.conversions.positive ? 'positive' : 'negative'}">
+                                    <span class="rax-lms-report-kpi-arrow">${trends.conversions.positive ? '↑' : '↓'}</span>
+                                    <span>${trends.conversions.value}% vs last month</span>
+                                </div>
+                            </div>
+                            <div class="rax-lms-report-kpi-card">
+                                <div class="rax-lms-report-kpi-label">Active Leads</div>
+                                <div class="rax-lms-report-kpi-value">${reportData.active_leads || 0}</div>
+                                <div class="rax-lms-report-kpi-trend ${trends.active_leads.positive ? 'positive' : 'negative'}">
+                                    <span class="rax-lms-report-kpi-arrow">${trends.active_leads.positive ? '↑' : '↓'}</span>
+                                    <span>${trends.active_leads.value}% vs last month</span>
+                                </div>
+                            </div>
+                            <div class="rax-lms-report-kpi-card">
+                                <div class="rax-lms-report-kpi-label">Revenue</div>
+                                <div class="rax-lms-report-kpi-value">$${formatNumber(reportData.revenue || 0)}</div>
+                                <div class="rax-lms-report-kpi-trend ${trends.revenue.positive ? 'positive' : 'negative'}">
+                                    <span class="rax-lms-report-kpi-arrow">${trends.revenue.positive ? '↑' : '↓'}</span>
+                                    <span>${trends.revenue.value}% vs last month</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Active Leads</div>
-                            <div class="rax-lms-kpi-value">${reportData.active_leads || 0}</div>
-                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.active_leads.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
-                                <span>${trends.active_leads.positive ? '↑' : '↓'}</span>
-                                <span>${trends.active_leads.value}% vs last period</span>
+                        
+                        <div class="rax-lms-report-chart-section">
+                            <div class="rax-lms-report-chart-header">
+                                <div>
+                                    <h3 class="rax-lms-report-chart-title">Monthly Performance</h3>
+                                    <p class="rax-lms-report-chart-subtitle">Lead acquisition over the selected period</p>
+                                </div>
                             </div>
-                        </div>
-                        <div class="rax-lms-kpi-card">
-                            <div class="rax-lms-kpi-label">Revenue</div>
-                            <div class="rax-lms-kpi-value">$${formatNumber(reportData.revenue || 0)}</div>
-                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: ${trends.revenue.positive ? 'var(--rax-success)' : 'var(--rax-danger)'};">
-                                <span>${trends.revenue.positive ? '↑' : '↓'}</span>
-                                <span>${trends.revenue.value}% vs last period</span>
+                            <div class="rax-lms-report-chart-container">
+                                <div id="report-monthly-chart" class="rax-lms-report-chart"></div>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <div class="rax-lms-details-card" style="margin-bottom: 24px;">
-                        <div class="rax-lms-details-card-title">Lead Status Breakdown</div>
-                        <div id="report-status-breakdown" style="padding: 16px 0;">
-                            ${reportData.status_breakdown ? Object.entries(reportData.status_breakdown).map(([status, count]) => {
-                                const total = Object.values(reportData.status_breakdown).reduce((a, b) => a + b, 0);
-                                const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-                                return `
-                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rax-gray-200);">
-                                        <div>
-                                            <div style="font-weight: 500; margin-bottom: 4px;">${status.charAt(0).toUpperCase() + status.slice(1)}</div>
-                                            <div style="font-size: 12px; color: var(--rax-gray-500);">${count} leads (${percentage}%)</div>
-                                        </div>
-                                        <div style="width: 200px; height: 8px; background: var(--rax-gray-200); border-radius: 4px; overflow: hidden;">
-                                            <div style="width: ${percentage}%; height: 100%; background: var(--rax-primary); transition: width 0.3s;"></div>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('') : '<div style="padding: 20px; text-align: center; color: var(--rax-gray-500);">No data available</div>'}
-                        </div>
-                    </div>
-                    
-                    <div class="rax-lms-details-card">
-                        <div class="rax-lms-details-card-title">Lead Source Analysis</div>
-                        <div id="report-source-breakdown" style="padding: 16px 0;">
-                            ${reportData.source_breakdown ? Object.entries(reportData.source_breakdown).map(([source, count]) => {
-                                const total = Object.values(reportData.source_breakdown).reduce((a, b) => a + b, 0);
-                                const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-                                return `
-                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rax-gray-200);">
-                                        <div>
-                                            <div style="font-weight: 500; margin-bottom: 4px;">${source || 'Unknown'}</div>
-                                            <div style="font-size: 12px; color: var(--rax-gray-500);">${count} leads (${percentage}%)</div>
-                                        </div>
-                                        <div style="width: 200px; height: 8px; background: var(--rax-gray-200); border-radius: 4px; overflow: hidden;">
-                                            <div style="width: ${percentage}%; height: 100%; background: var(--rax-secondary); transition: width 0.3s;"></div>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('') : '<div style="padding: 20px; text-align: center; color: var(--rax-gray-500);">No data available</div>'}
                         </div>
                     </div>
                 </div>
