@@ -26,6 +26,7 @@ require_once RAX_LMS_PLUGIN_DIR . 'includes/class-database.php';
 require_once RAX_LMS_PLUGIN_DIR . 'includes/class-rest-api.php';
 require_once RAX_LMS_PLUGIN_DIR . 'includes/class-admin.php';
 require_once RAX_LMS_PLUGIN_DIR . 'includes/class-integrations.php';
+require_once RAX_LMS_PLUGIN_DIR . 'includes/class-lead-discovery.php';
 
 /**
  * Main plugin class
@@ -55,6 +56,7 @@ class Rax_Lead_Management {
     
     public function activate() {
         Rax_LMS_Database::create_tables();
+        Rax_LMS_Lead_Discovery::get_instance()->create_tables();
         flush_rewrite_rules();
     }
     
@@ -71,6 +73,7 @@ class Rax_Lead_Management {
         Rax_LMS_REST_API::get_instance();
         Rax_LMS_Admin::get_instance();
         Rax_LMS_Integrations::get_instance();
+        Rax_LMS_Lead_Discovery::get_instance();
     }
 }
 

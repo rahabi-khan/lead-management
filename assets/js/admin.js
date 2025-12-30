@@ -71,13 +71,17 @@
                 const data = await response.json();
                 
                 if (!response.ok) {
-                    throw new Error(data.message || 'Request failed');
+                    // Handle WordPress REST API error format
+                    const errorMessage = data.message || data.code || 'Request failed';
+                    const error = new Error(errorMessage);
+                    error.data = data;
+                    throw error;
                 }
                 
                 return data;
             } catch (error) {
                 console.error('API Error:', error);
-                showNotification(error.message || 'An error occurred', 'error');
+                // Don't show notification here - let the calling code handle it
                 throw error;
             }
         },
@@ -195,6 +199,8 @@
                 content.innerHTML = await renderCalendar();
             } else if (currentView === 'report') {
                 content.innerHTML = await renderReport();
+            } else if (currentView === 'discovery') {
+                content.innerHTML = await renderDiscovery();
             } else if (currentView === 'settings') {
                 content.innerHTML = await renderSettings();
             }
@@ -235,6 +241,9 @@
                             <button class="rax-lms-nav-menu-item ${currentView === 'segments' ? 'active' : ''}" data-view="segments">
                             Segments
                         </button>
+                            <button class="rax-lms-nav-menu-item ${currentView === 'discovery' ? 'active' : ''}" data-view="discovery">
+                            Discovery
+                        </button>
                             <button class="rax-lms-nav-menu-item ${currentView === 'tags' ? 'active' : ''}" data-view="tags">
                             Tags
                         </button>
@@ -258,16 +267,6 @@
                                 Refresh
                             </button>
                         ` : ''}
-                    ${isUserAdmin ? `
-                            <div class="rax-lms-view-mode-switch">
-                                <span class="rax-lms-view-mode-label ${viewMode === 'employee' ? 'active' : ''}">Employee</span>
-                            <label class="rax-lms-view-toggle">
-                                <input type="checkbox" id="view-mode-toggle" ${viewMode === 'admin' ? 'checked' : ''}>
-                                <span class="rax-lms-view-toggle-slider"></span>
-                            </label>
-                                <span class="rax-lms-view-mode-label ${viewMode === 'admin' ? 'active' : ''}">Admin</span>
-                        </div>
-                    ` : ''}
                     </div>
                 </div>
             </nav>
@@ -985,6 +984,149 @@
         `;
     }
     
+    function renderAddDiscoverySourceModal() {
+        return `
+            <div class="rax-lms-drawer-overlay" id="add-discovery-source-overlay">
+                <div class="rax-lms-drawer" id="add-discovery-source-drawer">
+                    <div class="rax-lms-drawer-header">
+                        <h2 class="rax-lms-drawer-title">Add Discovery Source</h2>
+                        <button class="rax-lms-drawer-close" id="close-discovery-source-drawer">×</button>
+                    </div>
+                    <div class="rax-lms-drawer-body">
+                        <form id="add-discovery-source-form">
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Source Name *</label>
+                                <input type="text" class="rax-lms-form-input" name="name" required placeholder="e.g., Company Website">
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Source Type *</label>
+                                <select class="rax-lms-form-input" name="source_type" required>
+                                    <option value="">Select type...</option>
+                                    <option value="website">Website</option>
+                                    <option value="directory">Directory</option>
+                                    <option value="social_media">Social Media</option>
+                                    <option value="api">API Endpoint</option>
+                                </select>
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Source URL *</label>
+                                <input type="url" class="rax-lms-form-input" name="source_url" required placeholder="https://example.com">
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label class="rax-lms-form-label">Crawl Frequency</label>
+                                <select class="rax-lms-form-input" name="crawl_frequency">
+                                    <option value="hourly">Hourly</option>
+                                    <option value="daily" selected>Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                </select>
+                            </div>
+                            <div class="rax-lms-form-group">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" name="is_active" checked style="width: 18px; height: 18px;">
+                                    <span>Active</span>
+                                </label>
+                            </div>
+                            <div class="rax-lms-drawer-actions">
+                                <button type="button" class="rax-lms-btn rax-lms-btn-secondary" id="cancel-discovery-source">Cancel</button>
+                                <button type="submit" class="rax-lms-btn rax-lms-btn-primary">Add Source</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function attachDiscoverySourceListeners() {
+        const drawer = document.getElementById('add-discovery-source-drawer');
+        const overlay = document.getElementById('add-discovery-source-overlay');
+        const closeBtn = document.getElementById('close-discovery-source-drawer');
+        const cancelBtn = document.getElementById('cancel-discovery-source');
+        
+        const closeDrawer = () => {
+            if (drawer) drawer.classList.remove('rax-lms-drawer-open');
+            if (overlay) overlay.classList.remove('rax-lms-drawer-overlay-visible');
+            setTimeout(() => {
+                if (overlay) overlay.remove();
+            }, 300);
+        };
+        
+        // Remove any existing event listeners by cloning and replacing
+        if (closeBtn) {
+            const newCloseBtn = closeBtn.cloneNode(true);
+            closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+            newCloseBtn.addEventListener('click', closeDrawer);
+        }
+        
+        if (cancelBtn) {
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            newCancelBtn.addEventListener('click', closeDrawer);
+        }
+        
+        if (overlay) {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) closeDrawer();
+            });
+        }
+        
+        // Show drawer with animation
+        setTimeout(() => {
+            if (drawer) drawer.classList.add('rax-lms-drawer-open');
+            if (overlay) overlay.classList.add('rax-lms-drawer-overlay-visible');
+        }, 10);
+        
+        // Form submission
+        const form = document.getElementById('add-discovery-source-form');
+        if (form) {
+            // Remove existing listener if any
+            const newForm = form.cloneNode(true);
+            form.parentNode.replaceChild(newForm, form);
+            
+            newForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                data.is_active = data.is_active === 'on' ? 1 : 0;
+                
+                const submitBtn = newForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Adding...';
+                
+                try {
+                    const result = await api.post('discovery/sources', data);
+                    showNotification('Discovery source added successfully', 'success');
+                    closeDrawer();
+                    renderApp();
+                } catch (error) {
+                    // Extract error message from WordPress REST API error format
+                    let errorMessage = 'Failed to add source';
+                    if (error.message) {
+                        errorMessage = error.message;
+                    } else if (error.data && error.data.message) {
+                        errorMessage = error.data.message;
+                    } else if (error.data && error.data.code) {
+                        errorMessage = error.data.code;
+                    }
+                    showNotification(errorMessage, 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+            });
+        }
+        
+        // Close on Escape key
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                closeDrawer();
+                document.removeEventListener('keydown', handleEscape);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+    }
+    
     function renderAddLeadModal() {
         return `
             <div class="rax-lms-drawer-overlay" id="add-lead-drawer-overlay">
@@ -1037,14 +1179,27 @@
                                 <option value="high">High</option>
                             </select>
                         </div>
-                            <div class="rax-lms-form-group">
-                                <label class="rax-lms-form-label">Company</label>
-                                <input type="text" class="rax-lms-form-input" name="company">
-                            </div>
-                            <div class="rax-lms-form-group">
-                                <label class="rax-lms-form-label">Notes</label>
-                                <textarea class="rax-lms-form-input" name="notes" rows="4" style="resize: vertical;"></textarea>
-                            </div>
+                        <div class="rax-lms-form-group">
+                            <label class="rax-lms-form-label">Estimated Value</label>
+                            <input type="number" class="rax-lms-form-input" name="estimated_value" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="rax-lms-form-group">
+                            <label class="rax-lms-form-label">Assigned To</label>
+                            <select class="rax-lms-form-input" name="assigned_user">
+                                <option value="">Unassigned</option>
+                                ${(raxLMS.users || []).map(user => `
+                                    <option value="${user.id}">${escapeHtml(user.name)}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <div class="rax-lms-form-group">
+                            <label class="rax-lms-form-label">Company</label>
+                            <input type="text" class="rax-lms-form-input" name="company">
+                        </div>
+                        <div class="rax-lms-form-group">
+                            <label class="rax-lms-form-label">Notes</label>
+                            <textarea class="rax-lms-form-input" name="notes" rows="4" style="resize: vertical;"></textarea>
+                        </div>
                             <div class="rax-lms-drawer-actions">
                             <button type="button" class="rax-lms-btn rax-lms-btn-secondary" id="cancel-add-lead">Cancel</button>
                             <button type="submit" class="rax-lms-btn rax-lms-btn-primary">Add Lead</button>
@@ -1079,25 +1234,6 @@
                 }
             });
         });
-        
-        // View mode toggle
-        const viewModeToggle = document.getElementById('view-mode-toggle');
-        if (viewModeToggle) {
-            viewModeToggle.addEventListener('change', (e) => {
-                viewMode = e.target.checked ? 'admin' : 'employee';
-                localStorage.setItem('rax_lms_view_mode', viewMode);
-                
-                // If switching to employee view and on admin-only page, go to dashboard
-                if (viewMode === 'employee') {
-                    const adminOnlyPages = ['analytics', 'segments', 'tags', 'report', 'settings'];
-                    if (adminOnlyPages.includes(currentView)) {
-                        currentView = 'dashboard';
-                    }
-                }
-                
-                renderApp();
-            });
-        }
         
         // Refresh dashboard
         const refreshBtn = document.getElementById('refresh-dashboard');
@@ -1529,6 +1665,106 @@
             });
         }
         
+        // Discovery page event listeners
+        if (currentView === 'discovery') {
+            // Add source button - remove old listener flag and attach fresh listener
+            const addSourceBtn = document.getElementById('add-discovery-source-btn') || document.getElementById('add-first-source-btn');
+            if (addSourceBtn) {
+                // Remove any existing listener by cloning the button
+                const newBtn = addSourceBtn.cloneNode(true);
+                addSourceBtn.parentNode.replaceChild(newBtn, addSourceBtn);
+                
+                // Attach fresh event listener
+                newBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Remove any existing overlay first
+                    const existingOverlay = document.getElementById('add-discovery-source-overlay');
+                    if (existingOverlay) {
+                        existingOverlay.remove();
+                    }
+                    
+                    // Add the modal
+                    document.body.insertAdjacentHTML('beforeend', renderAddDiscoverySourceModal());
+                    
+                    // Attach listeners after a small delay to ensure DOM is ready
+                    setTimeout(() => {
+                        attachDiscoverySourceListeners();
+                    }, 50);
+                });
+            }
+            
+            // Source action buttons
+            document.querySelectorAll('[data-action="discover"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const sourceId = e.target.closest('[data-source-id]')?.dataset.sourceId;
+                    if (!sourceId) return;
+                    
+                    btn.disabled = true;
+                    btn.textContent = 'Discovering...';
+                    
+                    try {
+                        const result = await api.post('discovery/discover', { source_id: parseInt(sourceId) });
+                        showNotification(`Discovered ${result.discovered} leads`, 'success');
+                        renderApp();
+                    } catch (error) {
+                        showNotification('Failed to discover leads: ' + (error.message || 'Unknown error'), 'error');
+                        btn.disabled = false;
+                        btn.textContent = 'Discover Now';
+                    }
+                });
+            });
+            
+            document.querySelectorAll('[data-action="delete"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const sourceId = e.target.closest('[data-source-id]')?.dataset.sourceId;
+                    if (!sourceId) return;
+                    
+                    if (!confirm('Are you sure you want to delete this discovery source?')) return;
+                    
+                    try {
+                        await api.delete(`discovery/sources/${sourceId}`);
+                        showNotification('Source deleted successfully', 'success');
+                        renderApp();
+                    } catch (error) {
+                        showNotification('Failed to delete source', 'error');
+                    }
+                });
+            });
+            
+            // Import/Ignore lead buttons
+            document.querySelectorAll('[data-action="import"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const leadId = e.target.closest('[data-lead-id]')?.dataset.leadId;
+                    if (!leadId) return;
+                    
+                    btn.disabled = true;
+                    btn.textContent = 'Importing...';
+                    
+                    try {
+                        const result = await api.post(`discovery/leads/${leadId}/import`, {});
+                        showNotification('Lead imported successfully', 'success');
+                        renderApp();
+                    } catch (error) {
+                        showNotification('Failed to import lead', 'error');
+                        btn.disabled = false;
+                        btn.textContent = 'Import';
+                    }
+                });
+            });
+            
+            document.querySelectorAll('[data-action="ignore"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const leadId = e.target.closest('[data-lead-id]')?.dataset.leadId;
+                    if (!leadId) return;
+                    
+                    showNotification('Lead ignored', 'info');
+                    renderApp();
+                });
+            });
+        }
+        
         const saveSettings = document.getElementById('save-settings');
         if (saveSettings) {
             saveSettings.addEventListener('click', async () => {
@@ -1837,8 +2073,33 @@
             const formData = new FormData(e.target);
             const data = Object.fromEntries(formData);
             
+            // Prepare metadata
+            const metadata = {};
+            if (data.company) {
+                metadata.company = data.company;
+            }
+            if (data.estimated_value) {
+                metadata.estimated_value = parseFloat(data.estimated_value) || 0;
+            }
+            if (data.notes) {
+                metadata.notes = data.notes;
+            }
+            
+            // Prepare lead data
+            const leadData = {
+                name: data.name,
+                email: data.email,
+                phone: data.phone || '',
+                source: data.source || 'manual',
+                status: data.status || 'new',
+                priority: data.priority || 'medium',
+                assigned_user: data.assigned_user || null,
+                tags: [],
+                metadata: metadata
+            };
+            
             try {
-                await api.post('leads', data);
+                await api.post('leads', leadData);
                 showNotification('Lead added successfully', 'success');
                 closeDrawer();
                 if (currentView === 'leads') {
@@ -2698,6 +2959,172 @@
     }
     
     // Settings Page
+    // Lead Discovery Page
+    async function renderDiscovery() {
+        try {
+            const [sources, discoveredLeads] = await Promise.all([
+                api.get('discovery/sources'),
+                api.get('discovery/leads?per_page=20&page=1')
+            ]);
+            
+            return `
+                <div class="rax-lms-discovery-page">
+                    <div class="rax-lms-discovery-header">
+                        <div>
+                            <h2 class="rax-lms-discovery-title">Lead Discovery</h2>
+                            <p class="rax-lms-discovery-subtitle">Automatically discover and collect leads from various sources</p>
+                        </div>
+                        <button class="rax-lms-btn rax-lms-btn-primary" id="add-discovery-source-btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            Add Source
+                        </button>
+                    </div>
+                    
+                    <div class="rax-lms-discovery-sources">
+                        <h3 class="rax-lms-discovery-section-title">Discovery Sources</h3>
+                        ${sources.length > 0 ? `
+                            <div class="rax-lms-discovery-sources-grid">
+                                ${sources.map(source => `
+                                    <div class="rax-lms-discovery-source-card">
+                                        <div class="rax-lms-discovery-source-header">
+                                            <div class="rax-lms-discovery-source-info">
+                                                <h4 class="rax-lms-discovery-source-name">${escapeHtml(source.name)}</h4>
+                                                <span class="rax-lms-discovery-source-type">${escapeHtml(source.source_type)}</span>
+                                            </div>
+                                            <div class="rax-lms-discovery-source-status ${source.is_active ? 'active' : 'inactive'}">
+                                                ${source.is_active ? 'Active' : 'Inactive'}
+                                            </div>
+                                        </div>
+                                        <div class="rax-lms-discovery-source-url">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                            <span>${escapeHtml(source.source_url)}</span>
+                                        </div>
+                                        <div class="rax-lms-discovery-source-meta">
+                                            <span>Frequency: ${escapeHtml(source.crawl_frequency)}</span>
+                                            ${source.last_crawled ? `<span>Last crawled: ${formatDate(source.last_crawled)}</span>` : '<span>Never crawled</span>'}
+                                        </div>
+                                        <div class="rax-lms-discovery-source-actions">
+                                            <button class="rax-lms-btn rax-lms-btn-secondary" data-source-id="${source.id}" data-action="discover">
+                                                Discover Now
+                                            </button>
+                                            <button class="rax-lms-btn rax-lms-btn-text" data-source-id="${source.id}" data-action="edit">
+                                                Edit
+                                            </button>
+                                            <button class="rax-lms-btn rax-lms-btn-text rax-lms-btn-danger" data-source-id="${source.id}" data-action="delete">
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div class="rax-lms-empty-state">
+                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <h3>No Discovery Sources</h3>
+                                <p>Add a source to start discovering leads automatically</p>
+                                <button class="rax-lms-btn rax-lms-btn-primary" id="add-first-source-btn">
+                                    Add Your First Source
+                                </button>
+                            </div>
+                        `}
+                    </div>
+                    
+                    <div class="rax-lms-discovered-leads-section">
+                        <div class="rax-lms-discovered-leads-header">
+                            <h3 class="rax-lms-discovery-section-title">Discovered Leads</h3>
+                            <div class="rax-lms-discovered-leads-filters">
+                                <select class="rax-lms-form-input" id="discovery-status-filter" style="width: auto;">
+                                    <option value="">All Status</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="imported">Imported</option>
+                                    <option value="ignored">Ignored</option>
+                                </select>
+                            </div>
+                        </div>
+                        ${discoveredLeads.leads && discoveredLeads.leads.length > 0 ? `
+                            <div class="rax-lms-discovered-leads-table">
+                                <table class="rax-lms-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Company</th>
+                                            <th>Source</th>
+                                            <th>Confidence</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${discoveredLeads.leads.map(lead => `
+                                            <tr>
+                                                <td>${escapeHtml(lead.name || 'N/A')}</td>
+                                                <td>${escapeHtml(lead.email || 'N/A')}</td>
+                                                <td>${escapeHtml(lead.company || 'N/A')}</td>
+                                                <td>
+                                                    <span class="rax-lms-discovery-source-badge">${escapeHtml(lead.source_type)}</span>
+                                                </td>
+                                                <td>
+                                                    <div class="rax-lms-confidence-score">
+                                                        <div class="rax-lms-confidence-bar">
+                                                            <div class="rax-lms-confidence-fill" style="width: ${lead.confidence_score}%"></div>
+                                                        </div>
+                                                        <span>${lead.confidence_score}%</span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="rax-lms-discovery-status-badge ${lead.discovery_status}">
+                                                        ${lead.discovery_status}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    ${lead.discovery_status === 'pending' ? `
+                                                        <button class="rax-lms-btn rax-lms-btn-sm rax-lms-btn-primary" data-lead-id="${lead.id}" data-action="import">
+                                                            Import
+                                                        </button>
+                                                        <button class="rax-lms-btn rax-lms-btn-sm rax-lms-btn-text" data-lead-id="${lead.id}" data-action="ignore">
+                                                            Ignore
+                                                        </button>
+                                                    ` : lead.discovery_status === 'imported' ? `
+                                                        <span class="rax-lms-text-muted">Imported</span>
+                                                    ` : ''}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : `
+                            <div class="rax-lms-empty-state">
+                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <h3>No Discovered Leads</h3>
+                                <p>Run discovery on a source to find leads</p>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        } catch (error) {
+            return `<div class="rax-lms-loading">Error loading discovery: ${error.message}</div>`;
+        }
+    }
+    
     async function renderSettings() {
         try {
             const settings = await api.get('settings');

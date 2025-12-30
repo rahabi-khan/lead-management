@@ -180,6 +180,51 @@ class Rax_LMS_REST_API {
             'callback' => array($this, 'generate_fake_data'),
             'permission_callback' => array($this, 'check_permissions')
         ));
+        
+        // Lead Discovery endpoints
+        register_rest_route($this->namespace, '/discovery/sources', array(
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'get_discovery_sources'),
+                'permission_callback' => array($this, 'check_permissions')
+            ),
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'create_discovery_source'),
+                'permission_callback' => array($this, 'check_permissions')
+            )
+        ));
+        
+        register_rest_route($this->namespace, '/discovery/sources/(?P<id>\d+)', array(
+            array(
+                'methods' => 'DELETE',
+                'callback' => array($this, 'delete_discovery_source'),
+                'permission_callback' => array($this, 'check_permissions')
+            ),
+            array(
+                'methods' => 'PUT',
+                'callback' => array($this, 'update_discovery_source'),
+                'permission_callback' => array($this, 'check_permissions')
+            )
+        ));
+        
+        register_rest_route($this->namespace, '/discovery/discover', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'discover_leads'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
+        
+        register_rest_route($this->namespace, '/discovery/leads', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_discovered_leads'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
+        
+        register_rest_route($this->namespace, '/discovery/leads/(?P<id>\d+)/import', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'import_discovered_lead'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
     }
     
     public function check_permissions() {
@@ -492,6 +537,136 @@ class Rax_LMS_REST_API {
         }
         
         return new WP_REST_Response($result, 200);
+    }
+    
+    // Lead Discovery endpoints
+    public function get_discovery_sources($request) {
+        $active_only = $request->get_param('active_only') === 'true';
+        $sources = Rax_LMS_Lead_Discovery::get_discovery_sources($active_only);
+        return new WP_REST_Response($sources, 200);
+    }
+    
+    public function create_discovery_source($request) {
+        // Try to get JSON params first, fallback to regular params
+        $data = $request->get_json_params();
+        if (empty($data)) {
+            $data = $request->get_params();
+        }
+        
+        // Validate required fields
+        if (empty($data['name'])) {
+            return new WP_Error('missing_name', 'Source name is required', array('status' => 400));
+        }
+        
+        if (empty($data['source_type'])) {
+            return new WP_Error('missing_source_type', 'Source type is required', array('status' => 400));
+        }
+        
+        if (empty($data['source_url'])) {
+            return new WP_Error('missing_source_url', 'Source URL is required', array('status' => 400));
+        }
+        
+        $result = Rax_LMS_Lead_Discovery::create_discovery_source($data);
+        
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        
+        return new WP_REST_Response(array('id' => $result, 'success' => true), 201);
+    }
+    
+    public function delete_discovery_source($request) {
+        global $wpdb;
+        $id = intval($request->get_param('id'));
+        $table = $wpdb->prefix . 'rax_lms_discovery_sources';
+        
+        $result = $wpdb->delete($table, array('id' => $id));
+        
+        if (!$result) {
+            return new WP_Error('delete_failed', 'Failed to delete discovery source', array('status' => 500));
+        }
+        
+        return new WP_REST_Response(array('success' => true), 200);
+    }
+    
+    public function update_discovery_source($request) {
+        global $wpdb;
+        $id = intval($request->get_param('id'));
+        $data = $request->get_json_params();
+        $table = $wpdb->prefix . 'rax_lms_discovery_sources';
+        
+        $update_data = array();
+        
+        if (isset($data['name'])) {
+            $update_data['name'] = sanitize_text_field($data['name']);
+        }
+        if (isset($data['source_url'])) {
+            $update_data['source_url'] = esc_url_raw($data['source_url']);
+        }
+        if (isset($data['is_active'])) {
+            $update_data['is_active'] = intval($data['is_active']);
+        }
+        if (isset($data['crawl_frequency'])) {
+            $update_data['crawl_frequency'] = sanitize_text_field($data['crawl_frequency']);
+        }
+        if (isset($data['crawl_settings'])) {
+            $update_data['crawl_settings'] = json_encode($data['crawl_settings']);
+        }
+        
+        $update_data['updated_at'] = current_time('mysql');
+        
+        $result = $wpdb->update($table, $update_data, array('id' => $id));
+        
+        if ($result === false) {
+            return new WP_Error('update_failed', 'Failed to update discovery source', array('status' => 500));
+        }
+        
+        return new WP_REST_Response(array('success' => true), 200);
+    }
+    
+    public function discover_leads($request) {
+        $data = $request->get_json_params();
+        $source_id = intval($data['source_id'] ?? 0);
+        $options = $data['options'] ?? array();
+        
+        if (!$source_id) {
+            return new WP_Error('missing_source_id', 'Source ID is required', array('status' => 400));
+        }
+        
+        $result = Rax_LMS_Lead_Discovery::discover_leads($source_id, $options);
+        
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        
+        return new WP_REST_Response($result, 200);
+    }
+    
+    public function get_discovered_leads($request) {
+        $args = array(
+            'status' => $request->get_param('status'),
+            'source_type' => $request->get_param('source_type'),
+            'per_page' => $request->get_param('per_page') ?: 20,
+            'page' => $request->get_param('page') ?: 1,
+            'orderby' => $request->get_param('orderby') ?: 'created_at',
+            'order' => $request->get_param('order') ?: 'DESC'
+        );
+        
+        $result = Rax_LMS_Lead_Discovery::get_discovered_leads($args);
+        return new WP_REST_Response($result, 200);
+    }
+    
+    public function import_discovered_lead($request) {
+        $id = intval($request->get_param('id'));
+        $data = $request->get_json_params();
+        
+        $result = Rax_LMS_Lead_Discovery::import_discovered_lead($id, $data);
+        
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        
+        return new WP_REST_Response(array('lead_id' => $result, 'success' => true), 200);
     }
     
 }
