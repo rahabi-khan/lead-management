@@ -71,6 +71,8 @@ class Rax_LMS_Lead_Discovery {
             crawl_frequency varchar(50) DEFAULT 'daily',
             last_crawled datetime DEFAULT NULL,
             next_crawl datetime DEFAULT NULL,
+            leads_found int(11) DEFAULT 0,
+            success_rate decimal(5,2) DEFAULT 0.00,
             crawl_settings longtext DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -79,9 +81,36 @@ class Rax_LMS_Lead_Discovery {
             KEY next_crawl (next_crawl)
         ) $charset_collate;";
         
+        // Discovery rules table
+        $discovery_rules_table = $table_prefix . 'discovery_rules';
+        $discovery_rules_sql = "CREATE TABLE IF NOT EXISTS $discovery_rules_table (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            rule_name varchar(255) NOT NULL,
+            rule_type varchar(100) NOT NULL,
+            rule_value longtext DEFAULT NULL,
+            is_enabled tinyint(1) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY rule_type (rule_type),
+            KEY is_enabled (is_enabled)
+        ) $charset_collate;";
+        
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($discovered_leads_sql);
         dbDelta($discovery_sources_sql);
+        dbDelta($discovery_rules_sql);
+        
+        // Add new columns to existing tables if they don't exist
+        $sources_table = $table_prefix . 'discovery_sources';
+        $column_check = $wpdb->get_results("SHOW COLUMNS FROM $sources_table LIKE 'leads_found'");
+        if (empty($column_check)) {
+            $wpdb->query("ALTER TABLE $sources_table ADD COLUMN leads_found int(11) DEFAULT 0 AFTER next_crawl");
+        }
+        $column_check = $wpdb->get_results("SHOW COLUMNS FROM $sources_table LIKE 'success_rate'");
+        if (empty($column_check)) {
+            $wpdb->query("ALTER TABLE $sources_table ADD COLUMN success_rate decimal(5,2) DEFAULT 0.00 AFTER leads_found");
+        }
     }
     
     /**
@@ -556,6 +585,97 @@ class Rax_LMS_Lead_Discovery {
         );
         
         return $lead_id;
+    }
+    
+    /**
+     * Get discovery rules
+     */
+    public static function get_discovery_rules() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'rax_lms_discovery_rules';
+        
+        $rules = $wpdb->get_results("SELECT * FROM $table ORDER BY created_at DESC", ARRAY_A);
+        
+        foreach ($rules as &$rule) {
+            $rule['rule_value'] = !empty($rule['rule_value']) ? json_decode($rule['rule_value'], true) : null;
+        }
+        
+        return $rules;
+    }
+    
+    /**
+     * Create a discovery rule
+     */
+    public static function create_discovery_rule($data) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'rax_lms_discovery_rules';
+        
+        // Ensure table exists
+        $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
+        if (!$table_exists) {
+            $instance = self::get_instance();
+            $instance->create_tables();
+        }
+        
+        $insert_data = array(
+            'rule_name' => sanitize_text_field($data['rule_name']),
+            'rule_type' => sanitize_text_field($data['rule_type']),
+            'rule_value' => json_encode($data['rule_value'] ?? ''),
+            'is_enabled' => isset($data['is_enabled']) ? intval($data['is_enabled']) : 1
+        );
+        
+        $result = $wpdb->insert($table, $insert_data);
+        
+        if ($result === false) {
+            $error_message = $wpdb->last_error ? $wpdb->last_error : 'Database insert failed';
+            return new WP_Error('db_error', 'Failed to create discovery rule: ' . $error_message, array('status' => 500));
+        }
+        
+        if ($result) {
+            return $wpdb->insert_id;
+        }
+        
+        return new WP_Error('db_error', 'Failed to create discovery rule', array('status' => 500));
+    }
+    
+    /**
+     * Update a discovery rule
+     */
+    public static function update_discovery_rule($id, $data) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'rax_lms_discovery_rules';
+        
+        $update_data = array();
+        
+        if (isset($data['is_enabled'])) {
+            $update_data['is_enabled'] = intval($data['is_enabled']);
+        }
+        
+        if (isset($data['value'])) {
+            $update_data['rule_value'] = json_encode($data['value']);
+        }
+        
+        if (isset($data['rule_name'])) {
+            $update_data['rule_name'] = sanitize_text_field($data['rule_name']);
+        }
+        
+        $update_data['updated_at'] = current_time('mysql');
+        
+        // Try to find by ID first, then by rule_type
+        $where = array();
+        if (is_numeric($id)) {
+            $where['id'] = intval($id);
+        } else {
+            $where['rule_type'] = sanitize_text_field($id);
+        }
+        
+        $result = $wpdb->update($table, $update_data, $where);
+        
+        if ($result === false) {
+            return new WP_Error('update_failed', 'Failed to update discovery rule', array('status' => 500));
+        }
+        
+        return true;
     }
 }
 

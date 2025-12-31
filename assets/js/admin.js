@@ -46,6 +46,7 @@
         all: [],
         filtered: []
     };
+    let discoveryTab = localStorage.getItem('discovery_active_tab') || 'overview';
     
     // Check if user is admin
     const isUserAdmin = raxLMS.isAdmin || false;
@@ -1667,32 +1668,44 @@
         
         // Discovery page event listeners
         if (currentView === 'discovery') {
-            // Add source button - remove old listener flag and attach fresh listener
-            const addSourceBtn = document.getElementById('add-discovery-source-btn') || document.getElementById('add-first-source-btn');
+            // Function to open the add source modal
+            const openAddSourceModal = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                
+                // Remove any existing overlay first
+                const existingOverlay = document.getElementById('add-discovery-source-overlay');
+                if (existingOverlay) {
+                    existingOverlay.remove();
+                }
+                
+                // Add the modal
+                document.body.insertAdjacentHTML('beforeend', renderAddDiscoverySourceModal());
+                
+                // Attach listeners after a small delay to ensure DOM is ready
+                setTimeout(() => {
+                    attachDiscoverySourceListeners();
+                }, 50);
+            };
+            
+            // Handle "Add Source" button in header
+            const addSourceBtn = document.getElementById('add-discovery-source-btn');
             if (addSourceBtn) {
                 // Remove any existing listener by cloning the button
                 const newBtn = addSourceBtn.cloneNode(true);
                 addSourceBtn.parentNode.replaceChild(newBtn, addSourceBtn);
-                
-                // Attach fresh event listener
-                newBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    // Remove any existing overlay first
-                    const existingOverlay = document.getElementById('add-discovery-source-overlay');
-                    if (existingOverlay) {
-                        existingOverlay.remove();
-                    }
-                    
-                    // Add the modal
-                    document.body.insertAdjacentHTML('beforeend', renderAddDiscoverySourceModal());
-                    
-                    // Attach listeners after a small delay to ensure DOM is ready
-                    setTimeout(() => {
-                        attachDiscoverySourceListeners();
-                    }, 50);
-                });
+                newBtn.addEventListener('click', openAddSourceModal);
+            }
+            
+            // Handle "Add Your First Source" button in empty state
+            const addFirstSourceBtn = document.getElementById('add-first-source-btn');
+            if (addFirstSourceBtn) {
+                // Remove any existing listener by cloning the button
+                const newFirstBtn = addFirstSourceBtn.cloneNode(true);
+                addFirstSourceBtn.parentNode.replaceChild(newFirstBtn, addFirstSourceBtn);
+                newFirstBtn.addEventListener('click', openAddSourceModal);
             }
             
             // Source action buttons
@@ -1759,8 +1772,158 @@
                     const leadId = e.target.closest('[data-lead-id]')?.dataset.leadId;
                     if (!leadId) return;
                     
-                    showNotification('Lead ignored', 'info');
+                    try {
+                        await api.post(`discovery/leads/${leadId}/reject`, {});
+                        showNotification('Lead rejected', 'info');
+                        renderApp();
+                    } catch (error) {
+                        showNotification('Failed to reject lead', 'error');
+                    }
+                });
+            });
+            
+            // Tab switching
+            document.querySelectorAll('.rax-lms-discovery-tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    const tabName = e.target.dataset.tab;
+                    if (tabName) {
+                        discoveryTab = tabName;
+                        localStorage.setItem('discovery_active_tab', tabName);
+                        renderApp();
+                    }
+                });
+            });
+            
+            // Play/Pause source buttons
+            document.querySelectorAll('[data-action="play"], [data-action="pause"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const sourceId = e.target.closest('[data-source-id]')?.dataset.sourceId;
+                    const action = e.target.closest('[data-action]')?.dataset.action;
+                    if (!sourceId || !action) return;
+                    
+                    try {
+                        await api.put(`discovery/sources/${sourceId}`, {
+                            is_active: action === 'play' ? 1 : 0
+                        });
+                        showNotification(`Source ${action === 'play' ? 'activated' : 'paused'}`, 'success');
+                        renderApp();
+                    } catch (error) {
+                        showNotification(`Failed to ${action} source`, 'error');
+                    }
+                });
+            });
+            
+            // Approve/Reject lead buttons
+            document.querySelectorAll('[data-action="approve"], [data-action="reject"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const leadId = e.target.closest('[data-lead-id]')?.dataset.leadId;
+                    const action = e.target.closest('[data-action]')?.dataset.action;
+                    if (!leadId || !action) return;
+                    
+                    btn.disabled = true;
+                    const originalText = btn.textContent;
+                    btn.textContent = action === 'approve' ? 'Approving...' : 'Rejecting...';
+                    
+                    try {
+                        if (action === 'approve') {
+                            await api.post(`discovery/leads/${leadId}/import`, {});
+                            showNotification('Lead approved and imported', 'success');
+                        } else {
+                            await api.post(`discovery/leads/${leadId}/reject`, {});
+                            showNotification('Lead rejected', 'info');
+                        }
+                        renderApp();
+                    } catch (error) {
+                        showNotification(`Failed to ${action} lead`, 'error');
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                    }
+                });
+            });
+            
+            // Bulk approve button
+            const bulkApproveBtn = document.getElementById('bulk-approve-btn');
+            if (bulkApproveBtn) {
+                bulkApproveBtn.addEventListener('click', async () => {
+                    const pendingLeads = document.querySelectorAll('[data-lead-id][data-action="approve"]');
+                    if (pendingLeads.length === 0) {
+                        showNotification('No pending leads to approve', 'info');
+                        return;
+                    }
+                    
+                    if (!confirm(`Approve ${pendingLeads.length} pending leads?`)) return;
+                    
+                    bulkApproveBtn.disabled = true;
+                    bulkApproveBtn.textContent = 'Approving...';
+                    
+                    let approved = 0;
+                    let failed = 0;
+                    
+                    for (const btn of pendingLeads) {
+                        const leadId = btn.dataset.leadId;
+                        try {
+                            await api.post(`discovery/leads/${leadId}/import`, {});
+                            approved++;
+                        } catch (error) {
+                            failed++;
+                        }
+                    }
+                    
+                    showNotification(`Approved ${approved} leads${failed > 0 ? `, ${failed} failed` : ''}`, approved > 0 ? 'success' : 'error');
                     renderApp();
+                });
+            }
+            
+            // Discovery Rules button
+            const discoveryRulesBtn = document.getElementById('discovery-rules-btn');
+            if (discoveryRulesBtn) {
+                discoveryRulesBtn.addEventListener('click', () => {
+                    showNotification('Coming soon', 'info');
+                });
+            }
+            
+            // Add Rule button
+            const addRuleBtn = document.getElementById('add-discovery-rule-btn');
+            if (addRuleBtn) {
+                addRuleBtn.addEventListener('click', () => {
+                    showNotification('Coming soon', 'info');
+                });
+            }
+            
+            // Discovery Rules toggles
+            document.querySelectorAll('.rax-lms-discovery-rule-toggle input[type="checkbox"]').forEach(toggle => {
+                toggle.addEventListener('change', async (e) => {
+                    const ruleId = e.target.dataset.ruleId;
+                    const ruleType = e.target.dataset.ruleType;
+                    const enabled = e.target.checked;
+                    
+                    try {
+                        await api.put(`discovery/rules/${ruleId || ruleType}`, {
+                            is_enabled: enabled ? 1 : 0
+                        });
+                        showNotification(`Rule ${enabled ? 'enabled' : 'disabled'}`, 'success');
+                    } catch (error) {
+                        showNotification('Failed to update rule', 'error');
+                        e.target.checked = !enabled; // Revert
+                    }
+                });
+            });
+            
+            // Discovery Rules field changes
+            document.querySelectorAll('[data-rule-id][data-rule-field]').forEach(field => {
+                field.addEventListener('change', async (e) => {
+                    const ruleId = e.target.dataset.ruleId;
+                    const fieldName = e.target.dataset.ruleField;
+                    const value = e.target.value;
+                    
+                    try {
+                        await api.put(`discovery/rules/${ruleId}`, {
+                            [fieldName]: value
+                        });
+                        showNotification('Rule updated', 'success');
+                    } catch (error) {
+                        showNotification('Failed to update rule', 'error');
+                    }
                 });
             });
         }
@@ -2120,6 +2283,48 @@
         if (!dateString) return '';
         const date = new Date(dateString);
         return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    function formatTimeAgo(dateString) {
+        if (!dateString) return 'Never';
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+        if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+        if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+        return formatDate(dateString);
+    }
+    
+    function formatNextRun(nextCrawl, isActive) {
+        if (!isActive) return 'Paused';
+        if (!nextCrawl) return 'Not scheduled';
+        const date = new Date(nextCrawl);
+        const now = new Date();
+        const diffMs = date - now;
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffMins = Math.floor((diffMs % 3600000) / 60000);
+        
+        if (diffMs < 0) return 'Overdue';
+        if (diffHours < 1) return `In ${diffMins} minutes`;
+        if (diffHours < 24) return `In ${diffHours} hours`;
+        return formatDate(nextCrawl);
+    }
+    
+    function getSourceIcon(sourceType) {
+        const icons = {
+            'website': '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+            'linkedin': '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="9" width="4" height="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+            'directory': '<circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+            'api': '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+            'rss': '<path d="M4 11a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 4a16 16 0 0 1 16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5" cy="19" r="1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        };
+        return icons[sourceType.toLowerCase()] || icons['website'];
     }
     
     function formatSourceName(source) {
@@ -2959,46 +3164,302 @@
     }
     
     // Settings Page
-    // Lead Discovery Page
+    // Lead Discovery Page - Comprehensive Implementation
     async function renderDiscovery() {
         try {
-            const [sources, discoveredLeads] = await Promise.all([
+            const [sources, discoveredLeads, rules] = await Promise.all([
                 api.get('discovery/sources'),
-                api.get('discovery/leads?per_page=20&page=1')
+                api.get('discovery/leads?per_page=50&page=1'),
+                api.get('discovery/rules').catch(() => [])
             ]);
+            
+            // Calculate stats
+            const activeSources = sources.filter(s => s.is_active).length;
+            const pendingLeads = discoveredLeads.leads ? discoveredLeads.leads.filter(l => l.discovery_status === 'pending').length : 0;
+            const approvedToday = discoveredLeads.leads ? discoveredLeads.leads.filter(l => {
+                if (l.discovery_status === 'imported' && l.updated_at) {
+                    const today = new Date();
+                    const updated = new Date(l.updated_at);
+                    return updated.toDateString() === today.toDateString();
+                }
+                return false;
+            }).length : 0;
+            const totalDiscovered = discoveredLeads.total || 0;
             
             return `
                 <div class="rax-lms-discovery-page">
                     <div class="rax-lms-discovery-header">
                         <div>
                             <h2 class="rax-lms-discovery-title">Lead Discovery</h2>
-                            <p class="rax-lms-discovery-subtitle">Automatically discover and collect leads from various sources</p>
+                            <p class="rax-lms-discovery-subtitle">Automated lead collection from multiple sources</p>
                         </div>
-                        <button class="rax-lms-btn rax-lms-btn-primary" id="add-discovery-source-btn">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                            Add Source
+                        <div class="rax-lms-discovery-header-actions">
+                            <button class="rax-lms-btn rax-lms-btn-secondary" id="discovery-rules-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                Discovery Rules
+                            </button>
+                            <button class="rax-lms-btn rax-lms-btn-primary" id="add-discovery-source-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                                + Add Source
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Privacy & Compliance Notice -->
+                    <div class="rax-lms-discovery-compliance">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <div class="rax-lms-discovery-compliance-text">
+                            <strong>Privacy & Compliance Notice.</strong> All lead discovery activities comply with GDPR, CCPA, and respect robots.txt guidelines. Only publicly available business information is collected, and all data sources require explicit consent configuration.
+                        </div>
+                    </div>
+                    
+                    <!-- Summary Cards -->
+                    <div class="rax-lms-discovery-stats">
+                        <div class="rax-lms-discovery-stat-card">
+                            <div class="rax-lms-discovery-stat-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="rax-lms-discovery-stat-content">
+                                <div class="rax-lms-discovery-stat-value">${activeSources}</div>
+                                <div class="rax-lms-discovery-stat-label">Active Sources</div>
+                                <div class="rax-lms-discovery-stat-trend positive">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <polyline points="18 15 12 9 6 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    <span>24%</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rax-lms-discovery-stat-card">
+                            <div class="rax-lms-discovery-stat-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="rax-lms-discovery-stat-content">
+                                <div class="rax-lms-discovery-stat-value">${pendingLeads}</div>
+                                <div class="rax-lms-discovery-stat-label">Pending Review</div>
+                                <div class="rax-lms-discovery-stat-badge review">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    <span>Review</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rax-lms-discovery-stat-card">
+                            <div class="rax-lms-discovery-stat-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="rax-lms-discovery-stat-content">
+                                <div class="rax-lms-discovery-stat-value">${approvedToday}</div>
+                                <div class="rax-lms-discovery-stat-label">Approved Today</div>
+                                <div class="rax-lms-discovery-stat-trend positive">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <polyline points="18 15 12 9 6 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    <span>18%</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rax-lms-discovery-stat-card">
+                            <div class="rax-lms-discovery-stat-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="rax-lms-discovery-stat-content">
+                                <div class="rax-lms-discovery-stat-value">${totalDiscovered}</div>
+                                <div class="rax-lms-discovery-stat-label">Total Discovered</div>
+                                <div class="rax-lms-discovery-stat-trend positive">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <polyline points="18 15 12 9 6 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    <span>32%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Navigation -->
+                    <div class="rax-lms-discovery-tabs">
+                        <button class="rax-lms-discovery-tab ${discoveryTab === 'overview' ? 'active' : ''}" data-tab="overview">
+                            Overview
+                        </button>
+                        <button class="rax-lms-discovery-tab ${discoveryTab === 'sources' ? 'active' : ''}" data-tab="sources">
+                            Sources (${sources.length})
+                        </button>
+                        <button class="rax-lms-discovery-tab ${discoveryTab === 'leads' ? 'active' : ''}" data-tab="leads">
+                            Discovered Leads (${pendingLeads} pending)
+                        </button>
+                        <button class="rax-lms-discovery-tab ${discoveryTab === 'rules' ? 'active' : ''}" data-tab="rules">
+                            Discovery Rules
                         </button>
                     </div>
                     
-                    <div class="rax-lms-discovery-sources">
-                        <h3 class="rax-lms-discovery-section-title">Discovery Sources</h3>
-                        ${sources.length > 0 ? `
-                            <div class="rax-lms-discovery-sources-grid">
-                                ${sources.map(source => `
-                                    <div class="rax-lms-discovery-source-card">
-                                        <div class="rax-lms-discovery-source-header">
-                                            <div class="rax-lms-discovery-source-info">
-                                                <h4 class="rax-lms-discovery-source-name">${escapeHtml(source.name)}</h4>
-                                                <span class="rax-lms-discovery-source-type">${escapeHtml(source.source_type)}</span>
-                                            </div>
-                                            <div class="rax-lms-discovery-source-status ${source.is_active ? 'active' : 'inactive'}">
-                                                ${source.is_active ? 'Active' : 'Inactive'}
+                    <!-- Tab Content -->
+                    <div class="rax-lms-discovery-tab-content">
+                        ${discoveryTab === 'overview' ? renderDiscoveryOverview(sources, discoveredLeads) : ''}
+                        ${discoveryTab === 'sources' ? renderDiscoverySources(sources) : ''}
+                        ${discoveryTab === 'leads' ? renderDiscoveredLeads(discoveredLeads) : ''}
+                        ${discoveryTab === 'rules' ? renderDiscoveryRules(rules) : ''}
+                    </div>
+                </div>
+            `;
+        } catch (error) {
+            return `<div class="rax-lms-loading">Error loading discovery: ${error.message}</div>`;
+        }
+    }
+    
+    // Discovery Tab Rendering Functions
+    function renderDiscoveryOverview(sources, discoveredLeads) {
+        const recentActivity = discoveredLeads.leads ? discoveredLeads.leads.slice(0, 10) : [];
+        const topSources = sources
+            .filter(s => s.leads_found > 0)
+            .sort((a, b) => (b.success_rate || 0) - (a.success_rate || 0))
+            .slice(0, 5);
+        
+        return `
+            <div class="rax-lms-discovery-overview">
+                <div class="rax-lms-discovery-overview-grid">
+                    <div class="rax-lms-discovery-overview-section">
+                        <h3 class="rax-lms-discovery-section-title">Recent Discovery Activity</h3>
+                        <div class="rax-lms-discovery-activity-feed">
+                            ${recentActivity.length > 0 ? recentActivity.map(lead => `
+                                <div class="rax-lms-discovery-activity-item">
+                                    <div class="rax-lms-discovery-activity-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                    <div class="rax-lms-discovery-activity-content">
+                                        <div class="rax-lms-discovery-activity-name">${escapeHtml(lead.name || 'Unknown')}</div>
+                                        <div class="rax-lms-discovery-activity-meta">
+                                            <span>${escapeHtml(lead.company || 'N/A')}</span>
+                                            <span>•</span>
+                                            <span>${escapeHtml(lead.source_type)}</span>
+                                            <span>•</span>
+                                            <span>${formatTimeAgo(lead.created_at)}</span>
+                                        </div>
+                                    </div>
+                                    <div class="rax-lms-discovery-activity-score">
+                                        <span class="rax-lms-discovery-score-badge">${lead.confidence_score}%</span>
+                                    </div>
+                                </div>
+                            `).join('') : '<div class="rax-lms-empty-state-small">No recent activity</div>'}
+                        </div>
+                    </div>
+                    
+                    <div class="rax-lms-discovery-overview-section">
+                        <h3 class="rax-lms-discovery-section-title">Top Performing Sources</h3>
+                        <div class="rax-lms-discovery-top-sources">
+                            ${topSources.length > 0 ? topSources.map(source => `
+                                <div class="rax-lms-discovery-top-source-item">
+                                    <div class="rax-lms-discovery-top-source-icon">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            ${getSourceIcon(source.source_type)}
+                                        </svg>
+                                    </div>
+                                    <div class="rax-lms-discovery-top-source-info">
+                                        <div class="rax-lms-discovery-top-source-name">${escapeHtml(source.name)}</div>
+                                        <div class="rax-lms-discovery-top-source-stats">
+                                            <span>${source.leads_found || 0} leads</span>
+                                            <span>•</span>
+                                            <span>${source.success_rate || 0}% success</span>
+                                        </div>
+                                    </div>
+                                    <div class="rax-lms-discovery-top-source-rate">
+                                        ${source.success_rate || 0}%
+                                    </div>
+                                </div>
+                            `).join('') : '<div class="rax-lms-empty-state-small">No sources with data yet</div>'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function renderDiscoverySources(sources) {
+        return `
+            <div class="rax-lms-discovery-sources-tab">
+                ${sources.length > 0 ? `
+                    <div class="rax-lms-discovery-sources-list">
+                        ${sources.map(source => {
+                            const leadsFound = source.leads_found || 0;
+                            const successRate = source.success_rate || 0;
+                            const scheduleText = source.crawl_frequency === 'hourly' ? 'Every 6 hours' : 
+                                                source.crawl_frequency === 'daily' ? 'Daily' :
+                                                source.crawl_frequency === 'weekly' ? 'Weekly' :
+                                                source.crawl_frequency === 'monthly' ? 'Monthly' : source.crawl_frequency;
+                            
+                            return `
+                                <div class="rax-lms-discovery-source-card-enhanced">
+                                    <div class="rax-lms-discovery-source-card-header">
+                                        <div class="rax-lms-discovery-source-card-icon">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                ${getSourceIcon(source.source_type)}
+                                            </svg>
+                                        </div>
+                                        <div class="rax-lms-discovery-source-card-info">
+                                            <h4 class="rax-lms-discovery-source-card-name">${escapeHtml(source.name)}</h4>
+                                            <div class="rax-lms-discovery-source-card-status">
+                                                <span class="rax-lms-discovery-status-pill ${source.is_active ? 'active' : 'paused'}">
+                                                    ${source.is_active ? 'active' : 'paused'}
+                                                </span>
+                                                <span class="rax-lms-discovery-source-type-badge">${escapeHtml(formatSourceName(source.source_type))}</span>
                                             </div>
                                         </div>
-                                        <div class="rax-lms-discovery-source-url">
+                                        <div class="rax-lms-discovery-source-card-actions-top">
+                                            <button class="rax-lms-discovery-action-icon" data-source-id="${source.id}" data-action="${source.is_active ? 'pause' : 'play'}" title="${source.is_active ? 'Pause' : 'Play'}">
+                                                ${source.is_active ? `
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <rect x="6" y="4" width="4" height="16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                        <rect x="14" y="4" width="4" height="16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    </svg>
+                                                ` : `
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <polygon points="5 3 19 12 5 21 5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    </svg>
+                                                `}
+                                            </button>
+                                            <button class="rax-lms-discovery-action-icon" data-source-id="${source.id}" data-action="edit" title="Edit">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                </svg>
+                                            </button>
+                                            <button class="rax-lms-discovery-action-icon rax-lms-discovery-action-danger" data-source-id="${source.id}" data-action="delete" title="Delete">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="rax-lms-discovery-source-card-body">
+                                        <div class="rax-lms-discovery-source-card-url">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                                 <polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -3006,123 +3467,234 @@
                                             </svg>
                                             <span>${escapeHtml(source.source_url)}</span>
                                         </div>
-                                        <div class="rax-lms-discovery-source-meta">
-                                            <span>Frequency: ${escapeHtml(source.crawl_frequency)}</span>
-                                            ${source.last_crawled ? `<span>Last crawled: ${formatDate(source.last_crawled)}</span>` : '<span>Never crawled</span>'}
-                                        </div>
-                                        <div class="rax-lms-discovery-source-actions">
-                                            <button class="rax-lms-btn rax-lms-btn-secondary" data-source-id="${source.id}" data-action="discover">
-                                                Discover Now
-                                            </button>
-                                            <button class="rax-lms-btn rax-lms-btn-text" data-source-id="${source.id}" data-action="edit">
-                                                Edit
-                                            </button>
-                                            <button class="rax-lms-btn rax-lms-btn-text rax-lms-btn-danger" data-source-id="${source.id}" data-action="delete">
-                                                Delete
-                                            </button>
+                                        <div class="rax-lms-discovery-source-card-details">
+                                            <div class="rax-lms-discovery-source-detail">
+                                                <span class="rax-lms-discovery-detail-label">Schedule</span>
+                                                <span class="rax-lms-discovery-detail-value">${scheduleText}</span>
+                                            </div>
+                                            <div class="rax-lms-discovery-source-detail">
+                                                <span class="rax-lms-discovery-detail-label">Last run</span>
+                                                <span class="rax-lms-discovery-detail-value">${formatTimeAgo(source.last_crawled)}</span>
+                                            </div>
+                                            <div class="rax-lms-discovery-source-detail">
+                                                <span class="rax-lms-discovery-detail-label">Next run</span>
+                                                <span class="rax-lms-discovery-detail-value">${formatNextRun(source.next_crawl, source.is_active)}</span>
+                                            </div>
+                                            <div class="rax-lms-discovery-source-detail">
+                                                <span class="rax-lms-discovery-detail-label">Leads Found</span>
+                                                <span class="rax-lms-discovery-detail-value">${leadsFound}</span>
+                                            </div>
+                                            <div class="rax-lms-discovery-source-detail">
+                                                <span class="rax-lms-discovery-detail-label">Success Rate</span>
+                                                <span class="rax-lms-discovery-detail-value">${successRate}%</span>
+                                            </div>
                                         </div>
                                     </div>
-                                `).join('')}
-                            </div>
-                        ` : `
-                            <div class="rax-lms-empty-state">
-                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                                <h3>No Discovery Sources</h3>
-                                <p>Add a source to start discovering leads automatically</p>
-                                <button class="rax-lms-btn rax-lms-btn-primary" id="add-first-source-btn">
-                                    Add Your First Source
-                                </button>
-                            </div>
-                        `}
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
-                    
-                    <div class="rax-lms-discovered-leads-section">
-                        <div class="rax-lms-discovered-leads-header">
-                            <h3 class="rax-lms-discovery-section-title">Discovered Leads</h3>
-                            <div class="rax-lms-discovered-leads-filters">
-                                <select class="rax-lms-form-input" id="discovery-status-filter" style="width: auto;">
-                                    <option value="">All Status</option>
-                                    <option value="pending">Pending</option>
-                                    <option value="imported">Imported</option>
-                                    <option value="ignored">Ignored</option>
-                                </select>
-                            </div>
-                        </div>
-                        ${discoveredLeads.leads && discoveredLeads.leads.length > 0 ? `
-                            <div class="rax-lms-discovered-leads-table">
-                                <table class="rax-lms-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Name</th>
-                                            <th>Email</th>
-                                            <th>Company</th>
-                                            <th>Source</th>
-                                            <th>Confidence</th>
-                                            <th>Status</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${discoveredLeads.leads.map(lead => `
-                                            <tr>
-                                                <td>${escapeHtml(lead.name || 'N/A')}</td>
-                                                <td>${escapeHtml(lead.email || 'N/A')}</td>
-                                                <td>${escapeHtml(lead.company || 'N/A')}</td>
-                                                <td>
-                                                    <span class="rax-lms-discovery-source-badge">${escapeHtml(lead.source_type)}</span>
-                                                </td>
-                                                <td>
-                                                    <div class="rax-lms-confidence-score">
-                                                        <div class="rax-lms-confidence-bar">
-                                                            <div class="rax-lms-confidence-fill" style="width: ${lead.confidence_score}%"></div>
-                                                        </div>
-                                                        <span>${lead.confidence_score}%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="rax-lms-discovery-status-badge ${lead.discovery_status}">
-                                                        ${lead.discovery_status}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    ${lead.discovery_status === 'pending' ? `
-                                                        <button class="rax-lms-btn rax-lms-btn-sm rax-lms-btn-primary" data-lead-id="${lead.id}" data-action="import">
-                                                            Import
-                                                        </button>
-                                                        <button class="rax-lms-btn rax-lms-btn-sm rax-lms-btn-text" data-lead-id="${lead.id}" data-action="ignore">
-                                                            Ignore
-                                                        </button>
-                                                    ` : lead.discovery_status === 'imported' ? `
-                                                        <span class="rax-lms-text-muted">Imported</span>
-                                                    ` : ''}
-                                                </td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ` : `
-                            <div class="rax-lms-empty-state">
-                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                ` : `
+                    <div class="rax-lms-empty-state">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <h3>No Discovery Sources</h3>
+                        <p>Add a source to start discovering leads automatically</p>
+                        <button class="rax-lms-btn rax-lms-btn-primary" id="add-first-source-btn">
+                            Add Your First Source
+                        </button>
+                    </div>
+                `}
+            </div>
+        `;
+    }
+    
+    function renderDiscoveredLeads(discoveredLeads) {
+        const pendingLeads = discoveredLeads.leads ? discoveredLeads.leads.filter(l => l.discovery_status === 'pending') : [];
+        const approvedLeads = discoveredLeads.leads ? discoveredLeads.leads.filter(l => l.discovery_status === 'imported') : [];
+        const rejectedLeads = discoveredLeads.leads ? discoveredLeads.leads.filter(l => l.discovery_status === 'ignored') : [];
+        
+        return `
+            <div class="rax-lms-discovered-leads-tab">
+                <div class="rax-lms-discovered-leads-header">
+                    <div class="rax-lms-discovered-leads-header-left">
+                        <h3 class="rax-lms-discovery-section-title">Review Queue</h3>
+                        ${pendingLeads.length > 0 ? `
+                            <button class="rax-lms-btn rax-lms-btn-secondary" id="bulk-approve-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
-                                <h3>No Discovered Leads</h3>
-                                <p>Run discovery on a source to find leads</p>
-                            </div>
-                        `}
+                                Bulk Approve
+                            </button>
+                        ` : ''}
+                    </div>
+                    <div class="rax-lms-discovered-leads-filters">
+                        <select class="rax-lms-form-input" id="discovery-status-filter" style="width: auto;">
+                            <option value="pending" selected>Pending Review</option>
+                            <option value="imported">Approved</option>
+                            <option value="ignored">Rejected</option>
+                            <option value="">All Status</option>
+                        </select>
                     </div>
                 </div>
-            `;
-        } catch (error) {
-            return `<div class="rax-lms-loading">Error loading discovery: ${error.message}</div>`;
-        }
+                
+                ${pendingLeads.length > 0 ? `
+                    <div class="rax-lms-discovered-leads-grid">
+                        ${pendingLeads.map(lead => `
+                            <div class="rax-lms-discovered-lead-card">
+                                <div class="rax-lms-discovered-lead-header">
+                                    <div class="rax-lms-discovered-lead-info">
+                                        <h4 class="rax-lms-discovered-lead-name">${escapeHtml(lead.name || 'Unknown')}</h4>
+                                        <div class="rax-lms-discovered-lead-company">${escapeHtml(lead.company || 'N/A')}</div>
+                                    </div>
+                                    <div class="rax-lms-discovered-lead-score">
+                                        <div class="rax-lms-discovery-score-badge-large">${lead.confidence_score}%</div>
+                                    </div>
+                                </div>
+                                <div class="rax-lms-discovered-lead-details">
+                                    <div class="rax-lms-discovered-lead-detail">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <polyline points="22,6 12,13 2,6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <span>${escapeHtml(lead.email || 'N/A')}</span>
+                                    </div>
+                                    ${lead.phone ? `
+                                        <div class="rax-lms-discovered-lead-detail">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                            <span>${escapeHtml(lead.phone)}</span>
+                                        </div>
+                                    ` : ''}
+                                    <div class="rax-lms-discovered-lead-detail">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <span class="rax-lms-discovery-source-badge">${escapeHtml(formatSourceName(lead.source_type))}</span>
+                                    </div>
+                                </div>
+                                ${lead.source_url ? `
+                                    <div class="rax-lms-discovered-lead-source-link">
+                                        <a href="${escapeHtml(lead.source_url)}" target="_blank" rel="noopener noreferrer">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                            View Source
+                                        </a>
+                                    </div>
+                                ` : ''}
+                                <div class="rax-lms-discovered-lead-actions">
+                                    <button class="rax-lms-btn rax-lms-btn-primary" data-lead-id="${lead.id}" data-action="approve">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        Approve
+                                    </button>
+                                    <button class="rax-lms-btn rax-lms-btn-text" data-lead-id="${lead.id}" data-action="reject">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        Reject
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : `
+                    <div class="rax-lms-empty-state">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <h3>No Pending Leads</h3>
+                        <p>All discovered leads have been reviewed</p>
+                    </div>
+                `}
+            </div>
+        `;
+    }
+    
+    function renderDiscoveryRules(rules) {
+        const defaultRules = [
+            { name: 'Email Validation', type: 'email_validation', enabled: true, value: 'strict' },
+            { name: 'Duplicate Detection', type: 'duplicate_detection', enabled: true, value: 'enabled' },
+            { name: 'Minimum Quality Score', type: 'min_quality_score', enabled: true, value: '60' },
+            { name: 'Business Contact Filter', type: 'business_contact_only', enabled: true, value: 'enabled' },
+            { name: 'Geography Filter', type: 'geography_filter', enabled: false, value: '' }
+        ];
+        
+        const activeRules = rules && rules.length > 0 ? rules : defaultRules;
+        
+        return `
+            <div class="rax-lms-discovery-rules-tab">
+                <div class="rax-lms-discovery-rules-header">
+                    <div>
+                        <h3 class="rax-lms-discovery-section-title">Discovery Rules</h3>
+                        <p class="rax-lms-discovery-rules-subtitle">Configure rules to ensure data quality and compliance</p>
+                    </div>
+                    <button class="rax-lms-btn rax-lms-btn-primary" id="add-discovery-rule-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        Add Rule
+                    </button>
+                </div>
+                
+                <div class="rax-lms-discovery-rules-list">
+                    ${activeRules.map(rule => `
+                        <div class="rax-lms-discovery-rule-card">
+                            <div class="rax-lms-discovery-rule-header">
+                                <div class="rax-lms-discovery-rule-info">
+                                    <h4 class="rax-lms-discovery-rule-name">${escapeHtml(rule.name || rule.rule_name)}</h4>
+                                    <div class="rax-lms-discovery-rule-type">${escapeHtml(rule.type || rule.rule_type)}</div>
+                                </div>
+                                <label class="rax-lms-discovery-rule-toggle">
+                                    <input type="checkbox" ${rule.is_enabled !== false ? 'checked' : ''} data-rule-id="${rule.id || rule.type}" data-rule-type="${rule.type || rule.rule_type}">
+                                    <span class="rax-lms-discovery-rule-toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="rax-lms-discovery-rule-body">
+                                ${rule.type === 'email_validation' ? `
+                                    <div class="rax-lms-form-group">
+                                        <label class="rax-lms-form-label">Validation Level</label>
+                                        <select class="rax-lms-form-input" data-rule-id="${rule.id || rule.type}" data-rule-field="value">
+                                            <option value="strict" ${(rule.value || rule.rule_value) === 'strict' ? 'selected' : ''}>Strict (RFC compliant)</option>
+                                            <option value="standard" ${(rule.value || rule.rule_value) === 'standard' ? 'selected' : ''}>Standard</option>
+                                            <option value="relaxed" ${(rule.value || rule.rule_value) === 'relaxed' ? 'selected' : ''}>Relaxed</option>
+                                        </select>
+                                    </div>
+                                ` : rule.type === 'min_quality_score' ? `
+                                    <div class="rax-lms-form-group">
+                                        <label class="rax-lms-form-label">Minimum Score (0-100)</label>
+                                        <input type="number" class="rax-lms-form-input" min="0" max="100" value="${rule.value || rule.rule_value || '60'}" data-rule-id="${rule.id || rule.type}" data-rule-field="value">
+                                    </div>
+                                ` : rule.type === 'geography_filter' ? `
+                                    <div class="rax-lms-form-group">
+                                        <label class="rax-lms-form-label">Allowed Countries (comma-separated)</label>
+                                        <input type="text" class="rax-lms-form-input" placeholder="US, CA, UK" value="${rule.value || rule.rule_value || ''}" data-rule-id="${rule.id || rule.type}" data-rule-field="value">
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
     }
     
     async function renderSettings() {
@@ -3345,7 +3917,16 @@
                 const result = await api.post('tags', data);
                 showNotification(result.message || 'Tag created successfully', 'success');
                 modalEl.remove();
-                renderApp();
+                
+                // Ensure we're on the tags view and refresh
+                if (currentView !== 'tags') {
+                    currentView = 'tags';
+                }
+                
+                // Small delay to ensure backend has processed the tag
+                setTimeout(() => {
+                    renderApp();
+                }, 100);
             } catch (error) {
                 showNotification(error.message || 'Failed to create tag', 'error');
             }

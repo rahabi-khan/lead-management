@@ -225,6 +225,33 @@ class Rax_LMS_REST_API {
             'callback' => array($this, 'import_discovered_lead'),
             'permission_callback' => array($this, 'check_permissions')
         ));
+        
+        register_rest_route($this->namespace, '/discovery/leads/(?P<id>\d+)/reject', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'reject_discovered_lead'),
+            'permission_callback' => array($this, 'check_permissions')
+        ));
+        
+        register_rest_route($this->namespace, '/discovery/rules', array(
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'get_discovery_rules'),
+                'permission_callback' => array($this, 'check_permissions')
+            ),
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'create_discovery_rule'),
+                'permission_callback' => array($this, 'check_permissions')
+            )
+        ));
+        
+        register_rest_route($this->namespace, '/discovery/rules/(?P<id>[a-zA-Z0-9_-]+)', array(
+            array(
+                'methods' => 'PUT',
+                'callback' => array($this, 'update_discovery_rule'),
+                'permission_callback' => array($this, 'check_permissions')
+            )
+        ));
     }
     
     public function check_permissions() {
@@ -667,6 +694,52 @@ class Rax_LMS_REST_API {
         }
         
         return new WP_REST_Response(array('lead_id' => $result, 'success' => true), 200);
+    }
+    
+    public function reject_discovered_lead($request) {
+        global $wpdb;
+        $id = intval($request->get_param('id'));
+        $table = $wpdb->prefix . 'rax_lms_discovered_leads';
+        
+        $result = $wpdb->update(
+            $table,
+            array('discovery_status' => 'ignored'),
+            array('id' => $id)
+        );
+        
+        if ($result === false) {
+            return new WP_Error('update_failed', 'Failed to reject lead', array('status' => 500));
+        }
+        
+        return new WP_REST_Response(array('success' => true), 200);
+    }
+    
+    public function get_discovery_rules($request) {
+        $rules = Rax_LMS_Lead_Discovery::get_discovery_rules();
+        return new WP_REST_Response($rules, 200);
+    }
+    
+    public function create_discovery_rule($request) {
+        $data = $request->get_json_params();
+        $result = Rax_LMS_Lead_Discovery::create_discovery_rule($data);
+        
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        
+        return new WP_REST_Response(array('id' => $result, 'success' => true), 201);
+    }
+    
+    public function update_discovery_rule($request) {
+        $id = $request->get_param('id');
+        $data = $request->get_json_params();
+        $result = Rax_LMS_Lead_Discovery::update_discovery_rule($id, $data);
+        
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        
+        return new WP_REST_Response(array('success' => true), 200);
     }
     
 }
